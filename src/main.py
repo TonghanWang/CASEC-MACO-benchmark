@@ -71,9 +71,8 @@ def config_copy(config):
 
 
 if __name__ == '__main__':
-    # 指定GPU
-    # th.cuda.set_device(4)
-    # os.environ["CUDA_VISIBLE_DEVICES"] = "4"
+    th.cuda.set_device(0)
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
     params = deepcopy(sys.argv)
 
     # Get the defaults from default.yaml

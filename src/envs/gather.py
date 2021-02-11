@@ -246,17 +246,3 @@ class GatherEnv(MultiAgentEnv):
             "win_rate": self.battles_won / self.battles_game
         }
         return stats
-
-
-if __name__ == '__main__':
-    env = AggregateEnv()
-    env.reset()
-    for i in range(1000):
-        print('------------------------------', i, '--------------------------')
-        actions = np.random.randint(low=0, high=6, size=(7))
-        print('obs 0:', env.get_obs_agent(0))
-        print(env.agent_positions_idx)
-        reward, terminated, info = env.step(actions)
-
-        if terminated:
-            env.reset()

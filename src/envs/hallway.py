@@ -221,16 +221,3 @@ class HallwayEnv(MultiAgentEnv):
         self.p_step = 0
         self.rew_gather = []
         self.is_print_once = False
-
-
-if __name__ == '__main__':
-    env = HallwayEnv()
-    env.reset()
-    for i in range(100000):
-        print('------------------------------', i, '--------------------------')
-        actions = np.random.randint(low=0, high=3, size=(5))
-        print('obs 0:', env.get_obs_agent(0))
-        print(env.state_n)
-        reward, terminated, info = env.step(actions)
-        if terminated:
-            env.reset()

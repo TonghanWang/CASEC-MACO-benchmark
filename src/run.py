@@ -107,7 +107,6 @@ def run_sequential(args, logger):
                           device="cpu" if args.buffer_cpu_only else args.device)
 
     # Setup multiagent controller here
-    # buffer有sample函数
     '''
     print (buffer.scheme)
     {'state': {'vshape': 322}, 'obs': {'vshape': 176, 'group': 'agents'}, 
@@ -120,7 +119,6 @@ def run_sequential(args, logger):
     mac = mac_REGISTRY[args.mac](buffer.scheme, groups, args)
 
     # Give runner the scheme
-    # 这里相当于在EpisodeBatch和mac
     runner.setup(scheme=scheme, groups=groups, preprocess=preprocess, mac=mac)
 
     # Learner

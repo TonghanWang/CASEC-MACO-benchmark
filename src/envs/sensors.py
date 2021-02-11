@@ -274,17 +274,3 @@ class SensorEnv(MultiAgentEnv):
             "win_rate": self.battles_won / self.battles_game
         }
         return stats
-
-
-if __name__ == '__main__':
-    env = SensorEnv(n_agents=3, n_preys=2)
-    env.reset()
-    for i in range(1000):
-        print('------------------------------', i, '--------------------------')
-        actions = np.random.randint(low=0, high=6, size=(3))
-        print('obs 0:', env.get_obs_agent(0).reshape(5, 5))
-        print(env.agent_positions)
-        print(env.agent_positions_idx)
-        print(env.prey_positions)
-        print(env.prey_positions_idx)
-        env.step(actions)

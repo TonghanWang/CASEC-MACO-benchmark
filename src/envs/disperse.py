@@ -183,16 +183,3 @@ class DisperseEnv(MultiAgentEnv):
             "win_rate": self.battles_won / self.battles_game
         }
         return stats
-
-
-if __name__ == '__main__':
-    env = DispersionEnv()
-    env.reset()
-    for i in range(1000):
-        print('------------------------------', i, '--------------------------')
-        actions = np.random.randint(low=0, high=3, size=16)
-        print('obs 0:', env.get_obs_agent(0))
-        reward, terminated, info = env.step(actions)
-
-        if terminated:
-            env.reset()
