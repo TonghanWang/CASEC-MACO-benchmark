@@ -9,7 +9,7 @@ from smac.env.multiagentenv import MultiAgentEnv
 import copy
 
 
-class AggregateEnv(MultiAgentEnv):
+class GatherEnv(MultiAgentEnv):
     """The StarCraft II environment for decentralised multi-agent
     micromanagement scenarios.
     """

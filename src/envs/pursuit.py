@@ -9,7 +9,7 @@ from smac.env.multiagentenv import MultiAgentEnv
 import copy
 
 
-class PreyEnv(MultiAgentEnv):
+class PursuitEnv(MultiAgentEnv):
     """The StarCraft II environment for decentralised multi-agent
     micromanagement scenarios.
     """

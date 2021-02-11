@@ -10,15 +10,16 @@ import numpy as np
 import random
 
 
-class ClimbEnv(MultiAgentEnv):
+class DisperseEnv(MultiAgentEnv):
     """The StarCraft II environment for decentralised multi-agent
     micromanagement scenarios.
     """
     def __init__(
             self,
-            n_agents=15,
-            reward_win=10,
-            episode_limit=1,
+            n_agents=12,
+            n_actions=4,
+            initial_need=[0, 0, 0, 0],
+            episode_limit=10,
             obs_last_action=False,
             state_last_action=True,
             seed=None
@@ -32,14 +33,12 @@ class ClimbEnv(MultiAgentEnv):
         self.obs_last_action = obs_last_action
         self.state_last_action = state_last_action
 
-        # Rewards args
-        self.reward_win = reward_win
-
         # Other
         self._seed = seed
 
         # Actions
-        self.n_actions = 3
+        self.n_actions = n_actions
+        self.initial_need = initial_need
 
         # Statistics
         self._episode_count = 0
@@ -51,28 +50,59 @@ class ClimbEnv(MultiAgentEnv):
         self.last_action = np.zeros((self.n_agents, self.n_actions))
 
         self.episode_limit = episode_limit
-        self.avail = np.array([-1., 0., 1.])
+        self.needs = initial_need
+        self.actions = np.random.randint(0, n_actions, n_agents)
+        self._match = 0
+
+    def _split_x(self, x, n):
+        result = np.zeros(n)
+        p = np.random.randint(low=0, high=n)
+        low = x // 2
+        result[p] = np.random.randint(low=low, high=x+1)
+        return result
 
     def step(self, actions):
         """Returns reward, terminated, info."""
+        # print(self.needs)
+        # print(actions)
         self._total_steps += 1
         self._episode_steps += 1
         info = {}
+        self.actions = actions
 
-        reward = 0
-
-        terminated = True
-        self._episode_count += 1
-        self.battles_game += 1
+        terminated = False
         info['battle_won'] = False
+        # actions_numpy = actions.detach().cpu().numpy()
 
-        count = (actions == 0).float().sum()
-        if count == self.n_agents:
-            info['battle_won'] = True
-            reward += self.reward_win
-            self.battles_won += 1
-        elif count == 0:
-            reward += self.reward_win / 2
+        delta = []
+        for action_i in range(self.n_actions):
+            supply = float((actions == action_i).sum())
+            need = float(self.needs[action_i])
+
+            if supply >= need:
+                self._match += 1
+
+            delta.append(min(supply - need, 0))
+        reward = float(np.array(delta).sum()) / self.n_agents
+
+        # print('step', self._episode_steps, ':')
+        # print(self.needs)
+        # print(self.actions)
+        # print(reward)
+
+        self.needs = self._split_x(self.n_agents, self.n_actions)
+        info['match'] = self._match
+
+        if self._episode_steps >= self.episode_limit:
+            # print(self._match)
+            # print(reward)
+            terminated = True
+            self._episode_count += 1
+            self.battles_game += 1
+
+            if self._match == self.n_actions * self.episode_limit:
+                info['battle_won'] = True
+                self.battles_won += 1
 
         return reward, terminated, info
 
@@ -82,13 +112,17 @@ class ClimbEnv(MultiAgentEnv):
 
     def get_obs_agent(self, agent_id):
         """Returns observation for agent_id."""
-        # x = 1. if self.actions[agent_id] in self.avail else 0.
-        # return np.array([x])
-        return self.avail
+        agent_action = self.actions[agent_id]
+        # print([agent_action, self.needs[agent_action]])
+        # print([float(x) for x in (self.actions == agent_action)])
+        action_one_hot = np.zeros(self.n_actions)
+        action_one_hot[agent_action] = 1.
+        return np.concatenate((action_one_hot, [self.needs[agent_action]], [float(x) for x in (self.actions == agent_action)]))
+        # return np.array([agent_action, self.needs[agent_action], (self.actions == agent_action).sum()])
 
     def get_obs_size(self):
         """Returns the size of the observation."""
-        return 3
+        return self.n_actions + 1 + self.n_agents
 
     def get_state(self):
         """Returns the global state."""
@@ -114,6 +148,10 @@ class ClimbEnv(MultiAgentEnv):
         """Returns initial observations and states."""
         self._episode_steps = 0
         self.last_action = np.zeros((self.n_agents, self.n_actions))
+
+        self.needs = self.initial_need
+        self.actions = np.random.randint(0, self.n_actions, self.n_agents)
+        self._match = 0
 
         return self.get_obs(), self.get_state()
 
@@ -152,7 +190,7 @@ if __name__ == '__main__':
     env.reset()
     for i in range(1000):
         print('------------------------------', i, '--------------------------')
-        actions = np.random.randint(low=0, high=5, size=(15))
+        actions = np.random.randint(low=0, high=3, size=16)
         print('obs 0:', env.get_obs_agent(0))
         reward, terminated, info = env.step(actions)
 
