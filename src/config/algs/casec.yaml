@@ -1,0 +1,68 @@
+# --- Deep Coordination Graph parameters ---
+name: "casec"
+
+# use epsilon greedy action selector
+action_selector: "epsilon_greedy"
+action_encoder: "obs_reward"
+epsilon_start: 1.0            # Initial epsilon for exploration
+epsilon_finish: 0.05          # Final epsilon for exploration
+epsilon_anneal_time: 70000
+epsilon_anneal_time_exp: 70000
+
+# specify runner
+runner: "episode"
+buffer_size: 5000             # Number of episodes in the experience replay buffer
+target_update_interval: 200
+
+# Specify the gnn_marl
+threshold: 0.3                # threshold for adjacency matrix
+individual_dim: 16            # Dim for the individual function
+delta_dim: 64                 # Dim for the delta function
+# gnn_input_dim: 1              # Input dim for gnn
+# gnn_hidden_dim: 32             # Hidden dim for gnn
+# gnn_output_dim: 1             # Output dim for gnn
+post_mlp_dim: 32              # Dim for post mlp
+
+# specify learner, controller and agent
+agent: "rnn"                  # A RNN agent that returns its hidden state instead of its value
+pair_agent: "pair_rnn"
+agent_output_type: "q"        # The output format is Q-values
+learner: "casec_learner"          # The learner
+mac: "casec_mac"                # The multi-agent controller
+mixer:  "vdn"                # qmix for gnn_marl
+double_q: True
+mixing_embed_dim: 32
+hypernet_layers: 2
+hypernet_embed: 64
+p_lr: 1.0
+
+pair_rnn_hidden_dim: 128 # Size of hidden state for default rnn agent
+independent_p_q: True
+edge_threshold_start: 0.00001
+edge_threshold_end: 0.01
+edge_threshold_increasing_time: 500000
+
+# Sparseness learning loss
+l1_loss_weight: 0.0001
+q_var_loss_weight: 0.0001
+delta_var_loss_weight: 0.0001
+l1_loss: False
+q_var_loss: False
+delta_var_loss: False
+no_loss: False
+
+use_action_repr: False
+action_latent_dim: 20
+state_latent_dim: 32
+action_repr_learning_phase: 50000
+
+atten_dim: 32
+
+# How to construct adject graph
+construction_delta_var: False
+construction_q_var: False
+construction_delta_abs: False
+construction_history_similarity: False
+construction_attention: False
+random_graph: False
+full_graph: False
