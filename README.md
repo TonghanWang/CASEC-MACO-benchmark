@@ -20,31 +20,31 @@ python src/main.py --config=casec --env-config=sc2 with env_args.map_name=MMM2 u
 ```
 
 There are four methods for building sparse graphs:
-* `construction_delta_abs`: Maximum utility difference, Eq. 5 in the paper
-* `construction_q_var`: Variance of payoff functions, Eq. 6 in the paper
-* `construction_delta_var`: Variance of utility difference, Eq. 7 in the paper
-* `construction_attention`: Observation-based approaches, Eq. 12 in the paper
+* `construction_delta_abs`: Using the maximum utility difference (Eq. 5 in the paper)
+* `construction_q_var`: Using the variance of payoff functions (Eq. 6 in the paper)
+* `construction_delta_var`: Using the variance of utility difference functions (Eq. 7 in the paper)
+* `construction_attention`: Using the attentional observation-based approach (Eq. 12 in the paper)
 
 By default, they are set to `False`. Setting `True` for one of them would use the corresponding method to construct sparse graphs. Setting `full_graph` and `random_graph` to `True` can test complete and random coordination graphs, respectively.
 
 There are three losses for learning sparse topologies:
-* `l1_loss`: ![](http://latex.codecogs.com/svg.latex?\mathcal{L}_{\mathrm{sparse}}^{|\delta|}), Eq. 8 in the paper
-* `q_var_loss`: ![](http://latex.codecogs.com/svg.latex?\mathcal{L}_{\mathrm{sparse}}^{q_{\mathrm{var}}}), Eq. 9 in the paper
-* `delta_var_loss`: ![](http://latex.codecogs.com/svg.latex?\mathcal{L}_{\mathrm{sparse}}^{\delta_{\mathrm{var}}}), Eq. 10 in the paper
+* `l1_loss`: Using ![](http://latex.codecogs.com/svg.latex?\mathcal{L}_{\mathrm{sparse}}^{|\delta|}) (Eq. 8 in the paper)
+* `q_var_loss`: Using ![](http://latex.codecogs.com/svg.latex?\mathcal{L}_{\mathrm{sparse}}^{q_{\mathrm{var}}}) (Eq. 9 in the paper)
+* `delta_var_loss`: Using ![](http://latex.codecogs.com/svg.latex?\mathcal{L}_{\mathrm{sparse}}^{\delta_{\mathrm{var}}}) (Eq. 10 in the paper)
 
 By default, they are set to `False`. Setting `True` for one of them would use the corresponding loss.
 
-CASEC uses `construction_delta_var` and `delta_var_loss`.
+CASEC uses `construction_delta_var` and `delta_var_loss`. Set `delta_var_loss_weight` to 1e-4 and 1e-3 for MACO and SMAC tasks, respectively.
 The config files act as defaults for an algorithm or environment. 
 They are all located in `src/config`.
-`--config` refers to the config files in `src/config/algs`
-`--env-config` refers to the config files in `src/config/envs`
+`--config` refers to the config files in `src/config/algs`.
+`--env-config` refers to the config files in `src/config/envs`.
 All results will be stored in the `Results` folder.
 The previous config files used for the SMAC Beta have the suffix `_beta`.
 
 ## Installation instructions
 
-Build the Dockerfile using 
+Build the Dockerfile using:
 ```shell
 cd docker
 bash build.sh
