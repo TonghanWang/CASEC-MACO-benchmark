@@ -19,8 +19,12 @@ To run experiments on the SMAC benchmark:
 python src/main.py --config=casec --env-config=sc2 with env_args.map_name=MMM2 use_action_repr=True delta_var_loss=True delta_var_loss_weight=0.001 construction_delta_var=True threshold=0.1 t_max=2005000 independent_p_q=False
 ```
 
-There are three losses for learning sparse topologies `l1_loss`
-To change , set `q_var_loss = True` and `construction_q_var = True`.
+There are four methods for building sparse graphs: `construction_delta_var`, `construction_q_var`, `construction_delta_abs`, and `construction_attention`.
+By default, they are set to `False`. Set `True` for one of them would use the corresponding method to construct sparse graphs. Set `full_graph` and `random_graph` to `Ture` can test complete and random coordination graphs, respectively.
+
+There are three losses for learning sparse topologies: `l1_loss`, `q_var_loss`, and `delta_var_loss`. By default, they are set to `False`. Set `True` for one of them would use the corresponding loss.
+
+CASEC uses `construction_delta_var` and `delta_var_loss`.
 
 The config files act as defaults for an algorithm or environment. 
 
@@ -47,13 +51,13 @@ bash install_sc2.sh
 
 This will download SC2 into the 3rdparty folder and copy the maps necessary to run over.
 
-The requirements.txt file can be used to install the necessary packages into a virtual environment (not recomended).
+The requirements.txt file can be used to install the necessary packages into a virtual environment.
 
 ## Saving and loading learnt models
 
 ### Saving models
 
-You can save the learnt models to disk by setting `save_model = True`, which is set to `False` by default. The frequency of saving models can be adjusted using `save_model_interval` configuration. Models will be saved in the result directory, under the folder called *models*. The directory corresponding each run will contain models saved throughout the experiment, each within a folder corresponding to the number of timesteps passed since starting the learning process.
+You can save the learnt models to disk by setting `save_model = True`, which is set to `False` by default. The frequency of saving models can be adjusted using `save_model_interval` configuration. Models will be saved in the result directory, under the folder named *models*. The directory corresponding to each run will contain models saved throughout the training process, each of which is named by the number of timesteps passed since the learning process starts.
 
 ### Loading models
 
