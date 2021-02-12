@@ -33,6 +33,7 @@ There are three losses for learning sparse topologies:
 * `delta_var_loss`: ![](http://latex.codecogs.com/svg.latex?\mathcal{L}_{\mathrm{sparse}}^{\delta_{\mathrm{var}}}), Eq. 10 in the paper
 
 By default, they are set to `False`. Setting `True` for one of them would use the corresponding loss.
+
 CASEC uses `construction_delta_var` and `delta_var_loss`.
 The config files act as defaults for an algorithm or environment. 
 They are all located in `src/config`.
