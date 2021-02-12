@@ -20,10 +20,10 @@ python src/main.py --config=casec --env-config=sc2 with env_args.map_name=MMM2 u
 ```
 
 There are four methods for building sparse graphs:
-* `construction_delta_abs`: **Maximum utility difference**, Eq. 5 in the paper
-* `construction_q_var`: **Variance of payoff functions**, Eq. 6 in the paper
-* `construction_delta_var`: **Variance of utility difference**, Eq. 7 in the paper
-* `construction_attention`: **Observation-based approaches**, Eq. 12 in the paper
+* `construction_delta_abs`: Maximum utility difference, Eq. 5 in the paper
+* `construction_q_var`: Variance of payoff functions, Eq. 6 in the paper
+* `construction_delta_var`: Variance of utility difference, Eq. 7 in the paper
+* `construction_attention`: Observation-based approaches, Eq. 12 in the paper
 
 By default, they are set to `False`. Setting `True` for one of them would use the corresponding method to construct sparse graphs. Setting `full_graph` and `random_graph` to `True` can test complete and random coordination graphs, respectively.
 
