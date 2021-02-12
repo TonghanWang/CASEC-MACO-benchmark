@@ -24,12 +24,14 @@ There are four methods for building sparse graphs:
 * `construction_q_var` (**Variance of payoff functions**, Eq. 6 in the paper)
 * `construction_delta_var` (**Variance of utility difference**, Eq. 7 in the paper)
 * `construction_attention` (**Observation-based approaches**, Eq. 12 in the paper)
+
 By default, they are set to `False`. Setting `True` for one of them would use the corresponding method to construct sparse graphs. Setting `full_graph` and `random_graph` to `True` can test complete and random coordination graphs, respectively.
 
 There are three losses for learning sparse topologies:
 * `l1_loss` (![](http://latex.codecogs.com/svg.latex?\mathcal{L}_{\mathrm{sparse}}^{|\delta|}), Eq. 8 in the paper)
 * `q_var_loss` (![](http://latex.codecogs.com/svg.latex?\mathcal{L}_{\mathrm{sparse}}^{q_{\mathrm{var}}}), Eq. 9 in the paper)
 * `delta_var_loss` (![](http://latex.codecogs.com/svg.latex?\mathcal{L}_{\mathrm{sparse}}^{\delta_{\mathrm{var}}}), Eq. 10 in the paper).
+
 By default, they are set to `False`. Setting `True` for one of them would use the corresponding loss.
 
 CASEC uses `construction_delta_var` and `delta_var_loss`.
