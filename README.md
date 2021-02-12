@@ -19,10 +19,10 @@ To run experiments on the SMAC benchmark:
 python src/main.py --config=casec --env-config=sc2 with env_args.map_name=MMM2 use_action_repr=True delta_var_loss=True delta_var_loss_weight=0.001 construction_delta_var=True threshold=0.1 t_max=2005000 independent_p_q=False
 ```
 
-There are four methods for building sparse graphs: `construction_delta_var`, `construction_q_var`, `construction_delta_abs`, and `construction_attention`.
-By default, they are set to `False`. Set `True` for one of them would use the corresponding method to construct sparse graphs. Set `full_graph` and `random_graph` to `Ture` can test complete and random coordination graphs, respectively.
+There are four methods for building sparse graphs: `construction_delta_abs`**Maximum utility difference**(Eq. 5 in the paper),`construction_q_var`**Variance of payoff functions**(Eq. 6 in the paper), `construction_delta_var`**Variance of utility difference**(Eq. 7 in the paper) and `construction_attention`**Observation-based approaches**(Eq. 12 in the paper).
+By default, they are set to `False`. Setting `True` for one of them would use the corresponding method to construct sparse graphs. Setting `full_graph` and `random_graph` to `Ture` can test complete and random coordination graphs, respectively.
 
-There are three losses for learning sparse topologies: `l1_loss`, `q_var_loss`, and `delta_var_loss`. By default, they are set to `False`. Set `True` for one of them would use the corresponding loss.
+There are three losses for learning sparse topologies: `l1_loss`**Maximum utility difference**(Eq. 8 in the paper), `q_var_loss`**Variance of payoff functions**(Eq. 9 in the paper), and `delta_var_loss`**Variance of utility difference**(Eq. 10 in the paper). By default, they are set to `False`. Setting `True` for one of them would use the corresponding loss.
 
 CASEC uses `construction_delta_var` and `delta_var_loss`.
 
