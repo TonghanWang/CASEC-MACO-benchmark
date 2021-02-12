@@ -1,19 +1,36 @@
-```diff
-- Please pay attention to the version of SC2 you are using for your experiments. 
-- Performance is *not* always comparable between versions. 
-- The results in SMAC (https://arxiv.org/abs/1902.04043) use SC2.4.6.2.69232 not SC2.4.10.
+# CASEC: Context-Aware Sparse Deep Coordination Graphs
+
+# MACO: Multi-Agent Coordination benchmark
+
+This codebase is based on [PyMARL](https://github.com/oxwhirl/pymarl) and [SMAC](https://github.com/oxwhirl/smac) and contains the implementation
+of the Multi-Agent COordination (MACO) benchmark and CASEC algorithm.
+
+## Run an experiment 
+
+Tasks in the MACO benchmark can be found in `src/envs`. To run experiments on the MACO benchmark:
+
+```shell
+python src/main.py --config=casec --env-config=hallway with threshold=0.5 t_max=1050000 construction_delta_var=True delta_var_loss=True
 ```
 
-# Python MARL framework
+To run experiments on the SMAC benchmark:
 
-PyMARL is [WhiRL](http://whirl.cs.ox.ac.uk)'s framework for deep multi-agent reinforcement learning and includes implementations of the following algorithms:
-- [**QMIX**: QMIX: Monotonic Value Function Factorisation for Deep Multi-Agent Reinforcement Learning](https://arxiv.org/abs/1803.11485)
-- [**COMA**: Counterfactual Multi-Agent Policy Gradients](https://arxiv.org/abs/1705.08926)
-- [**VDN**: Value-Decomposition Networks For Cooperative Multi-Agent Learning](https://arxiv.org/abs/1706.05296) 
-- [**IQL**: Independent Q-Learning](https://arxiv.org/abs/1511.08779)
-- [**QTRAN**: QTRAN: Learning to Factorize with Transformation for Cooperative Multi-Agent Reinforcement Learning](https://arxiv.org/abs/1905.05408)
+```shell
+python src/main.py --config=casec --env-config=sc2 with env_args.map_name=MMM2 use_action_repr=True delta_var_loss=True delta_var_loss_weight=0.001 construction_delta_var=True threshold=0.1 t_max=2005000 independent_p_q=False
+```
 
-PyMARL is written in PyTorch and uses [SMAC](https://github.com/oxwhirl/smac) as its environment.
+There are three losses for learning sparse topologies `l1_loss`
+To change , set `q_var_loss = True` and `construction_q_var = True`.
+
+The config files act as defaults for an algorithm or environment. 
+
+They are all located in `src/config`.
+`--config` refers to the config files in `src/config/algs`
+`--env-config` refers to the config files in `src/config/envs`
+
+All results will be stored in the `Results` folder.
+
+The previous config files used for the SMAC Beta have the suffix `_beta`.
 
 ## Installation instructions
 
@@ -31,27 +48,6 @@ bash install_sc2.sh
 This will download SC2 into the 3rdparty folder and copy the maps necessary to run over.
 
 The requirements.txt file can be used to install the necessary packages into a virtual environment (not recomended).
-
-## Run an experiment 
-
-```shell
-python3 src/main.py --config=qmix --env-config=sc2 with env_args.map_name=2s3z
-```
-
-The config files act as defaults for an algorithm or environment. 
-
-They are all located in `src/config`.
-`--config` refers to the config files in `src/config/algs`
-`--env-config` refers to the config files in `src/config/envs`
-
-To run experiments using the Docker container:
-```shell
-bash run.sh $GPU python3 src/main.py --config=qmix --env-config=sc2 with env_args.map_name=2s3z
-```
-
-All results will be stored in the `Results` folder.
-
-The previous config files used for the SMAC Beta have the suffix `_beta`.
 
 ## Saving and loading learnt models
 
@@ -74,29 +70,3 @@ python -m pysc2.bin.play --norender --rgb_minimap_size 0 --replay NAME.SC2Replay
 ```
 
 **Note:** Replays cannot be watched using the Linux version of StarCraft II. Please use either the Mac or Windows version of the StarCraft II client.
-
-## Documentation/Support
-
-Documentation is a little sparse at the moment (but will improve!). Please raise an issue in this repo, or email [Tabish](mailto:tabish.rashid@cs.ox.ac.uk)
-
-## Citing PyMARL 
-
-If you use PyMARL in your research, please cite the [SMAC paper](https://arxiv.org/abs/1902.04043).
-
-*M. Samvelyan, T. Rashid, C. Schroeder de Witt, G. Farquhar, N. Nardelli, T.G.J. Rudner, C.-M. Hung, P.H.S. Torr, J. Foerster, S. Whiteson. The StarCraft Multi-Agent Challenge, CoRR abs/1902.04043, 2019.*
-
-In BibTeX format:
-
-```tex
-@article{samvelyan19smac,
-  title = {{The} {StarCraft} {Multi}-{Agent} {Challenge}},
-  author = {Mikayel Samvelyan and Tabish Rashid and Christian Schroeder de Witt and Gregory Farquhar and Nantas Nardelli and Tim G. J. Rudner and Chia-Man Hung and Philiph H. S. Torr and Jakob Foerster and Shimon Whiteson},
-  journal = {CoRR},
-  volume = {abs/1902.04043},
-  year = {2019},
-}
-```
-
-## License
-
-Code licensed under the Apache License v2.0
