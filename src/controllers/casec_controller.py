@@ -149,9 +149,6 @@ class CASECMAC(object):
         # All relevant tensors should be double to reduce accumulating precision loss
         x = x / self.n_agents
         q_ij = q_ij / self.n_agents**2
-        # Unavailable actions have a utility of -inf, which propagates throughout message passing
-        if available_actions is not None:
-            x = x.masked_fill(available_actions == 0, -float('inf'))
         # q_left_up = self.q_left_up.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1)
         q_left_down = self.q_left_down.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1, 1)
         # r_up_left = self.r_up_left.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1)
@@ -166,6 +163,12 @@ class CASECMAC(object):
         adj_new_e = adj_new.unsqueeze(-1).repeat(1, 1, 1, 1, self.n_actions)
         q_ij_new = q_ij.unsqueeze(dim=1).repeat(1, self.n_agents, 1, 1, 1, 1) * self.pre_matrix.unsqueeze(
             dim=0).unsqueeze(dim=-1).unsqueeze(dim=-1).repeat(self.bs, 1, 1, 1, 1, 1)
+        
+        # Unavailable actions have a utility of -inf, which propagates throughout message passing
+        if available_actions is not None:
+            available_actions_new = available_actions.unsqueeze(dim=2).unsqueeze(dim=2).repeat(
+                1, 1, self.n_agents, self.n_agent, 1) * self.pre_matrix.unsqueeze(dim=0).unsqueeze(dim=-1).repeat(
+                    self.bs, 1, 1, 1, 1, 1)
 
         for _ in range(k):
             # Message from variable node i to function node g:
@@ -182,6 +185,9 @@ class CASECMAC(object):
 
             sum_q_h_exclude_i = (q_left_down * adj_new_e).sum(1).unsqueeze(1).repeat(1, self.n_agents, 1, 1,
                                                                                      1) - q_left_down
+            if available_actions is not None:
+                sum_q_h_exclude_i[eye3_ik].masked_fill_(available_actions_new[eye3_ik] == 0, -float('inf'))
+                sum_q_h_exclude_i[eye3_ij].masked_fill_(available_actions_new[eye3_ij] == 0, -float('inf'))
             r_down_left[eye3_ik] = (q_ij_new[eye3_ik] + sum_q_h_exclude_i[eye3_ik].unsqueeze(-1)).max(dim=-2)[0]
             r_down_left[eye3_ij] = (q_ij_new[eye3_ij] + sum_q_h_exclude_i[eye3_ij].unsqueeze(-2)).max(dim=-1)[0]
             r_down_left[:, self.eye3] = x.clone()
