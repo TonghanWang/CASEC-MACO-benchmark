@@ -144,7 +144,7 @@ class CASECMAC(object):
         z = (adj_new_e * r_down_left).sum(dim=-2) + r_up_left
         return z
 
-    def MaxSum_new(self, x, adj, q_ij, k=3, available_actions=None):
+    def MaxSum_new(self, x, adj, q_ij, available_actions=None, k=3):
         # (bs,n,|A|), (bs,n,n), (bs,n,n,|A|,|A|) -> (bs,n,|A|)
         # All relevant tensors should be double to reduce accumulating precision loss
         x = x / self.n_agents
