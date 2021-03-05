@@ -144,14 +144,20 @@ class CASECMAC(object):
         z = (adj_new_e * r_down_left).sum(dim=-2) + r_up_left
         return z
 
-    def MaxSum_new(self, x, adj, q_ij, k=3):
-        # (bs,n,|A|), (bs,n,n), (bs,E,|A|,|A|), (bs,n,n,|A|,|A|) -> (bs,n,|A|)
+    def MaxSum_new(self, x, adj, q_ij, k=3, available_actions=None):
+        # (bs,n,|A|), (bs,n,n), (bs,n,n,|A|,|A|) -> (bs,n,|A|)
+        # All relevant tensors should be double to reduce accumulating precision loss
+        x = x / self.n_agents
+        q_ij = q_ij / self.n_agents**2
+        # Unavailable actions have a utility of -inf, which propagates throughout message passing
+        if available_actions is not None:
+            x = x.masked_fill(available_actions == 0, -float('inf'))
         # q_left_up = self.q_left_up.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1)
         q_left_down = self.q_left_down.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1, 1)
         # r_up_left = self.r_up_left.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1)
         r_down_left = self.r_down_left.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1, 1)
         # (bs,n,n,|A|), (bs,n,n,n,|A|), (bs,n,n,|A|), (bs,n,n,n,|A|)
-        q_left_down_loop, r_down_left_loop = q_left_down.clone(), r_down_left.clone()
+        # q_left_down_loop, r_down_left_loop = q_left_down.clone(), r_down_left.clone()
 
         x_new = self.x_new.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1)
         x_new[:, self.eye2] = x
@@ -225,7 +231,7 @@ class CASECMAC(object):
         x, adj, edge_attr, q_ij = self.construction(f_i, delta_ij, q_ij, his_cos_sim, atten_ij, ep_batch, t, target_delta_ij, target_q_ij, target_his_cos_sim, target_atten_ij)
 
         # (bs,n,|A|) = (b,n,|A|), (b,n,n), (b,E,|A|,|A|)
-        x_out = self.MaxSum_new(x.detach(), adj.detach(), q_ij.detach())
+        x_out = self.MaxSum_new(x.detach(), adj.detach(), q_ij.detach(), available_actions=ep_batch['avail_actions'][:, t])
         return x_out
 
     def caller_ip_q(self, ep_batch, t):
@@ -366,7 +372,7 @@ class CASECMAC(object):
             adj = self.zeros.repeat(self.bs, 1, 1).view(-1, self.n_agents * self.n_agents)
             adj.scatter_(1, adj_tensor_topk, 1)
             adj = adj.view(-1, self.n_agents, self.n_agents).detach()
-            # Only for MaxSUm_new:
+            # Only for MaxSum_new:
             adj[:, self.eye2] = 1.
 
         return x, adj, None, q_ij * self.p_lr
