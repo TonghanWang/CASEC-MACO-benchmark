@@ -5,7 +5,6 @@ import torch.nn as nn
 from components.action_selectors import REGISTRY as action_REGISTRY
 from modules.action_encoders import REGISTRY as action_encoder_REGISTRY
 from modules.agents import REGISTRY as agent_REGISTRY
-import torch_scatter
 
 
 # from torch_geometric.data import DataLoader
