@@ -5,6 +5,7 @@ import torch.nn as nn
 from components.action_selectors import REGISTRY as action_REGISTRY
 from modules.action_encoders import REGISTRY as action_encoder_REGISTRY
 from modules.agents import REGISTRY as agent_REGISTRY
+import torch_scatter
 
 
 # from torch_geometric.data import DataLoader
@@ -29,7 +30,7 @@ class CASECMAC(object):
         self.use_action_repr = args.use_action_repr
 
         delta_input_length = (
-                    2 * self.args.pair_rnn_hidden_dim) if self.independent_p_q else 2 * self.args.rnn_hidden_dim
+                2 * self.args.pair_rnn_hidden_dim) if self.independent_p_q else 2 * self.args.rnn_hidden_dim
 
         if self.use_action_repr:
             self.delta = nn.Linear(delta_input_length, 2 * self.args.action_latent_dim)
@@ -145,39 +146,38 @@ class CASECMAC(object):
         return z
 
     def MaxSum_new(self, x, adj, q_ij, available_actions=None, k=3):
-        # (bs,n,|A|), (bs,n,n), (bs,n,n,|A|,|A|) -> (bs,n,|A|)
+        # (bs,n,|A|), (bs,n,n), (bs,n,n,|A|,|A|), (bs,n,|A|) -> (bs,n,|A|)
         # All relevant tensors should be double to reduce accumulating precision loss
+        adj[:, self.eye2] = 0.
+        num_edges = adj.sum(-1).sum(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
         x = x / self.n_agents
-        q_ij = q_ij / self.n_agents**2
+        q_ij = q_ij / num_edges
+
         # q_left_up = self.q_left_up.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1)
         q_left_down = self.q_left_down.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1, 1)
         # r_up_left = self.r_up_left.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1)
         r_down_left = self.r_down_left.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1, 1)
         # (bs,n,n,|A|), (bs,n,n,n,|A|), (bs,n,n,|A|), (bs,n,n,n,|A|)
-        # q_left_down_loop, r_down_left_loop = q_left_down.clone(), r_down_left.clone()
 
-        x_new = self.x_new.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1)
-        x_new[:, self.eye2] = x
         adj_new = adj.unsqueeze(dim=1).repeat(1, self.n_agents, 1, 1) * self.pre_matrix.unsqueeze(dim=0).repeat(self.bs,
                                                                                                                 1, 1, 1)
         adj_new_e = adj_new.unsqueeze(-1).repeat(1, 1, 1, 1, self.n_actions)
         q_ij_new = q_ij.unsqueeze(dim=1).repeat(1, self.n_agents, 1, 1, 1, 1) * self.pre_matrix.unsqueeze(
             dim=0).unsqueeze(dim=-1).unsqueeze(dim=-1).repeat(self.bs, 1, 1, 1, 1, 1)
-        
+
         # Unavailable actions have a utility of -inf, which propagates throughout message passing
         if available_actions is not None:
-            available_actions_new = available_actions.unsqueeze(dim=2).unsqueeze(dim=2).repeat(
-                1, 1, self.n_agents, self.n_agent, 1) * self.pre_matrix.unsqueeze(dim=0).unsqueeze(dim=-1).repeat(
-                    self.bs, 1, 1, 1, 1, 1)
+            available_actions_i = available_actions.unsqueeze(dim=2).unsqueeze(dim=2).repeat(1, 1, self.n_agents, self.n_agents, 1)
+            available_actions_j = available_actions.unsqueeze(dim=2).unsqueeze(dim=1).repeat(1, self.n_agents, 1, self.n_agents, 1)
+            available_actions_k = available_actions.unsqueeze(dim=1).unsqueeze(dim=1).repeat(1, self.n_agents, self.n_agents, 1, 1)
 
         for _ in range(k):
             # Message from variable node i to function node g:
-
-            q_left_down_sum = (adj_new_e * r_down_left).sum(dim=-2).sum(dim=-2)
+            q_left_down_sum = (adj_new_e * r_down_left).sum(dim=-2).sum(dim=-2) + x
             q_left_down = q_left_down_sum.unsqueeze(dim=-2).unsqueeze(dim=-2).repeat(1, 1, self.n_agents, self.n_agents,
                                                                                      1) * adj_new_e - r_down_left
             # Normalize
-            q_left_down = q_left_down - q_left_down.mean(dim=-1, keepdim=True)
+            q_left_down = q_left_down - (q_left_down * available_actions_i).sum(dim=-1, keepdim=True) / available_actions_i.sum(dim=-1, keepdim=True)
 
             # Message from function node g to variable node i:
             eye3_ik = self.eye3_ik.repeat(self.bs, 1, 1, 1) * adj_new.bool()
@@ -186,22 +186,21 @@ class CASECMAC(object):
             sum_q_h_exclude_i = (q_left_down * adj_new_e).sum(1).unsqueeze(1).repeat(1, self.n_agents, 1, 1,
                                                                                      1) - q_left_down
             if available_actions is not None:
-                sum_q_h_exclude_i[eye3_ik].masked_fill_(available_actions_new[eye3_ik] == 0, -float('inf'))
-                sum_q_h_exclude_i[eye3_ij].masked_fill_(available_actions_new[eye3_ij] == 0, -float('inf'))
+                sum_q_h_exclude_i[eye3_ik] = sum_q_h_exclude_i[eye3_ik].masked_fill_(available_actions_j[eye3_ik] == 0, -float('inf'))
+                sum_q_h_exclude_i[eye3_ij] = sum_q_h_exclude_i[eye3_ij].masked_fill_(available_actions_k[eye3_ij] == 0, -float('inf'))
             r_down_left[eye3_ik] = (q_ij_new[eye3_ik] + sum_q_h_exclude_i[eye3_ik].unsqueeze(-1)).max(dim=-2)[0]
             r_down_left[eye3_ij] = (q_ij_new[eye3_ij] + sum_q_h_exclude_i[eye3_ij].unsqueeze(-2)).max(dim=-1)[0]
-            r_down_left[:, self.eye3] = x.clone()
 
         # Calculate the z value
-        z = (adj_new_e * r_down_left).sum(dim=-2).sum(dim=-2)
-
+        z = (adj_new_e * r_down_left).sum(dim=-2).sum(dim=-2) + x
         return z
 
     def select_actions(self, ep_batch, t_ep, t_env, bs=slice(None), test_mode=False):
         # Only select actions for the selected batch elements in bs
         avail_actions = ep_batch["avail_actions"][:, t_ep]
         f_i, delta_ij, q_ij, his_cos_sim, atten_ij = self.calculate(ep_batch, t_ep)
-        agent_outputs = self.max_sum(ep_batch, t_ep, f_i=f_i, delta_ij=delta_ij, q_ij=q_ij, his_cos_sim=his_cos_sim.detach(), atten_ij=atten_ij)  # (bs,n,|A|)
+        agent_outputs = self.max_sum(ep_batch, t_ep, f_i=f_i, delta_ij=delta_ij, q_ij=q_ij,
+                                     his_cos_sim=his_cos_sim.detach(), atten_ij=atten_ij)  # (bs,n,|A|)
         # select optim actions, so we should use forward right
         chosen_actions = self.action_selector.select_action(agent_outputs[bs], avail_actions[bs], t_env,
                                                             test_mode=test_mode)
@@ -224,7 +223,8 @@ class CASECMAC(object):
         edge_attr = edge_attr.squeeze()  # * self.adj  # (bs,n,n)
 
         if self.construction_attention:
-            agent_outs = f_i_gather.squeeze(dim=-1).mean(dim=-1) + (edge_attr * atten_ij).sum(dim=-1).sum(dim=-1) * self.p_lr
+            agent_outs = f_i_gather.squeeze(dim=-1).mean(dim=-1) + (edge_attr * atten_ij).sum(dim=-1).sum(
+                dim=-1) * self.p_lr
         else:
             agent_outs = f_i_gather.squeeze(dim=-1).mean(dim=-1) + edge_attr.mean(dim=-1).mean(dim=-1) * self.p_lr
 
@@ -232,9 +232,11 @@ class CASECMAC(object):
         return agent_outs, f_i, delta_ij, q_ij, atten_ij
         # (bs, 1), (bs,n,|A|), (bs,n,n,|A|,|A|)
 
-    def max_sum(self, ep_batch, t, f_i=None, delta_ij=None, q_ij=None, his_cos_sim=None, atten_ij=None, target_delta_ij=None, target_q_ij=None, target_his_cos_sim=None, target_atten_ij=None):
+    def max_sum(self, ep_batch, t, f_i=None, delta_ij=None, q_ij=None, his_cos_sim=None, atten_ij=None,
+                target_delta_ij=None, target_q_ij=None, target_his_cos_sim=None, target_atten_ij=None):
         # Calculate the utilities of each agent i and the incremental matrix delta for each agent pair (i&j).
-        x, adj, edge_attr, q_ij = self.construction(f_i, delta_ij, q_ij, his_cos_sim, atten_ij, ep_batch, t, target_delta_ij, target_q_ij, target_his_cos_sim, target_atten_ij)
+        x, adj, edge_attr, q_ij = self.construction(f_i, delta_ij, q_ij, his_cos_sim, atten_ij, ep_batch, t,
+                                                    target_delta_ij, target_q_ij, target_his_cos_sim, target_atten_ij)
 
         # (bs,n,|A|) = (b,n,|A|), (b,n,n), (b,E,|A|,|A|)
         x_out = self.MaxSum_new(x.detach(), adj.detach(), q_ij.detach(), available_actions=ep_batch['avail_actions'][:, t])
@@ -275,10 +277,17 @@ class CASECMAC(object):
 
     def _calculate_attention(self, hidden_states):
         # print(hidden_states.shape)
-        atten_i = self.atten_key(hidden_states.view(-1, self.args.rnn_hidden_dim)).view(self.bs, self.n_agents, -1).unsqueeze(2).repeat(1, 1, self.n_agents, 1)  # (bs, n, n, atten_dim)
-        atten_j = self.atten_query(hidden_states.view(-1, self.args.rnn_hidden_dim)).view(self.bs, self.n_agents, -1).unsqueeze(1).repeat(1, self.n_agents, 1, 1)   # (bs, n, n, atten_dim)
+        atten_i = self.atten_key(hidden_states.view(-1, self.args.rnn_hidden_dim)).view(self.bs, self.n_agents,
+                                                                                        -1).unsqueeze(2).repeat(1, 1,
+                                                                                                                self.n_agents,
+                                                                                                                1)  # (bs, n, n, atten_dim)
+        atten_j = self.atten_query(hidden_states.view(-1, self.args.rnn_hidden_dim)).view(self.bs, self.n_agents,
+                                                                                          -1).unsqueeze(1).repeat(1,
+                                                                                                                  self.n_agents,
+                                                                                                                  1,
+                                                                                                                  1)  # (bs, n, n, atten_dim)
 
-        atten_ij = (atten_i * atten_j).sum(-1).view(self.bs, -1) # (bs, n*n)
+        atten_ij = (atten_i * atten_j).sum(-1).view(self.bs, -1)  # (bs, n*n)
         atten_ij = self.atten_sofmax(atten_ij)
 
         return atten_ij.view(self.bs, self.n_agents, self.n_agents)
@@ -311,7 +320,8 @@ class CASECMAC(object):
         f_ij = (f_ij + f_ij.permute(0, 2, 1, 4, 3).detach()) / 2.
         return f_ij, history_cos_similarity
 
-    def construction(self, f_i, delta_ij, q_ij, his_cos_sim, atten_ij, ep_batch, t, target_delta_ij=None, target_q_ij=None, target_his_cos_sim=None, target_atten_ij=None):
+    def construction(self, f_i, delta_ij, q_ij, his_cos_sim, atten_ij, ep_batch, t, target_delta_ij=None,
+                     target_q_ij=None, target_his_cos_sim=None, target_atten_ij=None):
         x = f_i.clone()
 
         if self.random_graph:
@@ -378,7 +388,7 @@ class CASECMAC(object):
             adj = self.zeros.repeat(self.bs, 1, 1).view(-1, self.n_agents * self.n_agents)
             adj.scatter_(1, adj_tensor_topk, 1)
             adj = adj.view(-1, self.n_agents, self.n_agents).detach()
-            # Only for MaxSum_new:
+            # Only for MaxSUm_new:
             adj[:, self.eye2] = 1.
 
         return x, adj, None, q_ij * self.p_lr
@@ -395,6 +405,7 @@ class CASECMAC(object):
         input_j = self.action_repr.unsqueeze(0).repeat(self.n_actions, 1, 1)
         self.p_action_repr = th.cat([input_i, input_j], dim=-1).view(self.n_actions * self.n_actions,
                                                                      -1).t().unsqueeze(0)
+
     def post_processing(self, x_out):
         agent_outs = th.max(x_out, dim=-1, keepdim=True)[1]
         return agent_outs
@@ -412,14 +423,14 @@ class CASECMAC(object):
     def parameters(self):
         """ Returns a generator for all parameters of the controller. """
         if self.construction_attention:
-            param = list(self.agent.parameters()) + list(self.delta.parameters()) + list(self.atten_query.parameters()) + list(self.atten_key.parameters())
+            param = list(self.agent.parameters()) + list(self.delta.parameters()) + list(
+                self.atten_query.parameters()) + list(self.atten_key.parameters())
         elif self.independent_p_q:
             param = list(self.agent.parameters()) + list(self.p_agent.parameters()) + list(self.delta.parameters())
         else:
             param = list(self.agent.parameters()) + list(self.delta.parameters())
 
         return param
-
 
     def load_state(self, other_mac):
         """ Overwrites the parameters with those from other_mac. """
@@ -472,7 +483,7 @@ class CASECMAC(object):
             self.atten_query.load_state_dict(
                 th.load("{}/atten_query.th".format(path), map_location=lambda storage, loc: storage))
             self.atten_key.load_state_dict(
-                th.load("{}/atten_key.th".format(path), map_location=lambda storage, loc: storage)) 
+                th.load("{}/atten_key.th".format(path), map_location=lambda storage, loc: storage))
         self.delta.load_state_dict(th.load("{}/delta.th".format(path), map_location=lambda storage, loc: storage))
         # self.gnn.load_state_dict(th.load("{}/gnn.th".format(path), map_location=lambda storage, loc: storage))
         self.action_encoder.load_state_dict(th.load("{}/action_encoder.th".format(path),

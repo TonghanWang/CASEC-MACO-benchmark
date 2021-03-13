@@ -37,7 +37,7 @@ hypernet_embed: 64
 p_lr: 1.0
 
 pair_rnn_hidden_dim: 128 # Size of hidden state for default rnn agent
-independent_p_q: True
+independent_p_q: False
 edge_threshold_start: 0.00001
 edge_threshold_end: 0.01
 edge_threshold_increasing_time: 500000
