@@ -1,10 +1,10 @@
 env: pursuit
 
 env_args:
-  n_agents: 5
+  n_agents: 10
   n_preys: 5
-  episode_limit: 20
-  map_size: 8
+  episode_limit: 50
+  map_size: 10
   catch_reward: 1
   catch_fail_reward: -1
   sight_range: 2

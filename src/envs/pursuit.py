@@ -46,7 +46,8 @@ class PursuitEnv(MultiAgentEnv):
         self._seed = seed
 
         # Actions
-        self.n_actions = 5 + n_preys
+        self.n_actions = 9
+        # 0,1,2,3:catch 4,5,6,7:move 8:stop
 
         # Statistics
         self._episode_count = 0
@@ -55,7 +56,7 @@ class PursuitEnv(MultiAgentEnv):
         self.battles_won = 0
         self.battles_game = 0
         self.rest_prey = self.n_preys
-        self.neighbors = [(1, 1), (1, -1), (1, 0), (-1, 0), (-1, 1), (-1, -1), (0, 1), (0, -1)]
+        self.neighbors = [(0, 1), (1, 0), (0, -1), (-1, 0)]
 
         self.last_action = np.zeros((self.n_agents, self.n_actions))
 
@@ -80,6 +81,7 @@ class PursuitEnv(MultiAgentEnv):
             self.prey_positions_idx[prey_i, 1] = prey_y
 
         self.alive_preys = np.ones(self.n_preys)
+        self.alive_agents = np.ones(self.n_agents)
 
         for agent_i in range(self.n_agents):
             agent_x = np.random.randint(low=0, high=self.map_size)
@@ -97,7 +99,7 @@ class PursuitEnv(MultiAgentEnv):
         self._obs = -np.ones([self.map_size + 2 * self.sight_range, self.map_size + 2 * self.sight_range])
         self._obs[self.sight_range: -self.sight_range,
         self.sight_range: -self.sight_range] = self.agent_positions + 10 * self.prey_positions
-        self.obs_size = (self.n_agents + self.n_preys) * 3 + self.map_size * 2
+        self.obs_size = (self.sight_range * 2 + 1) ** 2 * 2 + self.map_size * 2
         self.map_eye = np.eye(self.map_size)
 
     def step(self, actions):
@@ -110,26 +112,39 @@ class PursuitEnv(MultiAgentEnv):
         terminated = False
         info['battle_won'] = False
 
-        # print(self._obs)
-
         def is_catch_neighbor(_agent_x, _agent_y, _prey_x, _prey_y):
-            if abs(_agent_x - _prey_x) <= 1 and abs(_agent_y - _prey_y) <= 1:
+            if abs(_agent_x - _prey_x) + abs(_agent_y - _prey_y) <= 1:
                 return True
             return False
+
+        # print('step', self._episode_steps)
+        # grid = np.zeros((self.map_size, self.map_size + 1))
+        # for i in range(self.n_agents):
+        #     if self.alive_agents[i] == 1:
+        #         grid[self.agent_positions_idx[i][0], self.agent_positions_idx[i][1]] = i + 1
+        # for i in range(self.n_preys):
+        #     if self.alive_preys[i] == 1:
+        #         grid[self.prey_positions_idx[i][0], self.prey_positions_idx[i][1]] = -1
+        # print(actions)
+        # for i in range(self.map_size):
+        #     grid[i, self.map_size] = -9
+        #     print(grid[i])
+        # print(self.alive_agents)
 
         for prey_i in range(self.n_preys):
             if self.alive_preys[prey_i]:
                 catch_number = 0
                 prey_x, prey_y = self.prey_positions_idx[prey_i, 0], self.prey_positions_idx[prey_i, 1]
 
-                for agent_i in range(self.n_agents):
+                for agent_i, action in enumerate(actions):
                     agent_x, agent_y = self.agent_positions_idx[agent_i, 0], self.agent_positions_idx[agent_i, 1]
-                    if is_catch_neighbor(agent_x, agent_y, prey_x, prey_y) and actions[agent_i] == prey_i:
+                    if is_catch_neighbor(agent_x, agent_y, prey_x, prey_y) and action < 4 \
+                            and agent_x + self.neighbors[action][0] == prey_x and agent_y + self.neighbors[action][1] == prey_y:
                         catch_number += 1
 
                 if catch_number == 1:
-                    reward += self.catch_fail_reward
-                elif catch_number >= 2:
+                   reward += self.catch_fail_reward
+                if catch_number >= 2:
                     reward += self.catch_reward
                     self.alive_preys[prey_i] = 0
                     self.rest_prey -= 1
@@ -139,25 +154,38 @@ class PursuitEnv(MultiAgentEnv):
                     self.prey_positions_idx[prey_i, 0] = self.map_size + 1
                     self.prey_positions_idx[prey_i, 1] = self.map_size + 1
 
+                    predator_count = 2
+                    for agent_i, action in enumerate(actions):
+                        agent_x, agent_y = self.agent_positions_idx[agent_i, 0], self.agent_positions_idx[agent_i, 1]
+                        if is_catch_neighbor(agent_x, agent_y, prey_x, prey_y) and action < 4 \
+                                and agent_x + self.neighbors[action][0] == prey_x and agent_y + self.neighbors[action][1] == prey_y:
+                            self.alive_agents[agent_i] = 0
+                            self.agent_positions[agent_x, agent_y] = 0
+                            self.agent_positions_idx[agent_i, 0] = self.map_size + 1
+                            self.agent_positions_idx[agent_i, 1] = self.map_size + 1
+                            self.occ[agent_x, agent_y] = 0
+                            predator_count -= 1
+                            if predator_count == 0:
+                                break
                 if self.rest_prey == 0:
                     break
 
         info['prey_left'] = self.rest_prey
 
         for agent_i, action in enumerate(actions):
-            if self.n_preys <= action <= self.n_preys + 3:
+            if 4 <= action <= 7:
                 x, y = self.agent_positions_idx[agent_i, 0], self.agent_positions_idx[agent_i, 1]
 
                 target_x = 100
                 target_y = 100
 
-                if action == self.n_preys:
+                if action == 4:
                     target_x, target_y = x, min(self.map_size - 1, y + 1)
-                elif action == self.n_preys + 1:
+                elif action == 5:
                     target_x, target_y = min(x + 1, self.map_size - 1), y
-                elif action == self.n_preys + 2:
+                elif action == 6:
                     target_x, target_y = x, max(0, y - 1)
-                elif action == self.n_preys + 3:
+                elif action == 7:
                     target_x, target_y = max(0, x - 1), y
 
                 if not self.occ[target_x, target_y]:
@@ -217,36 +245,28 @@ class PursuitEnv(MultiAgentEnv):
 
     def get_obs_agent(self, agent_id):
         """Returns observation for agent_id."""
+        if  self.alive_agents[agent_id] == 0:
+            return [0 for _ in range(self.obs_size)]
+
         self_x = self.agent_positions_idx[agent_id, 0]
         self_y = self.agent_positions_idx[agent_id, 1]
 
-        ally_indicator = np.zeros(self.n_agents)
-        ally_positions = np.zeros_like(self.agent_positions_idx)
-
+        grid_agent = np.zeros((self.sight_range * 2 + 1, self.sight_range * 2 + 1))
         for agent_i in range(self.n_agents):
-            if not (agent_i == agent_id):
+            if self.alive_agents[agent_i]:
                 delta_x = self.agent_positions_idx[agent_i, 0] - self_x
                 delta_y = self.agent_positions_idx[agent_i, 1] - self_y
-
                 if abs(delta_x) <= self.sight_range and abs(delta_y) <= self.sight_range:
-                    ally_indicator[agent_i] = 1
-                    ally_positions[agent_i, 0] = delta_x
-                    ally_positions[agent_i, 1] = delta_y
+                    grid_agent[delta_x + self.sight_range, delta_y + self.sight_range] = agent_i + 1
 
-        prey_indicator = np.zeros(self.n_preys)
-        prey_positions = np.zeros_like(self.prey_positions_idx)
-
+        grid_prey = np.zeros((self.sight_range * 2 + 1, self.sight_range * 2 + 1))
         for prey_i in range(self.n_preys):
             delta_x = self.prey_positions_idx[prey_i, 0] - self_x
             delta_y = self.prey_positions_idx[prey_i, 1] - self_y
-
             if abs(delta_x) <= self.sight_range and abs(delta_y) <= self.sight_range:
-                prey_indicator[prey_i] = 1
-                prey_positions[prey_i, 0] = delta_x
-                prey_positions[prey_i, 1] = delta_y
+                grid_prey[delta_x + self.sight_range, delta_y + self.sight_range] = 1
 
-        return np.concatenate([ally_indicator, ally_positions.flatten(), prey_indicator, prey_positions.flatten(),
-                               self.map_eye[self_x], self.map_eye[self_y]])
+        return np.concatenate([grid_agent.flatten(), grid_prey.flatten(), self.map_eye[self_x], self.map_eye[self_y]])
 
     def get_obs_size(self):
         """Returns the size of the observation."""
@@ -266,29 +286,25 @@ class PursuitEnv(MultiAgentEnv):
 
     def get_avail_agent_actions(self, agent_id):
         """Returns the available actions for agent_id."""
-        arr = np.zeros(self.n_preys)
         agent_x, agent_y = self.agent_positions_idx[agent_id, 0], self.agent_positions_idx[agent_id, 1]
-        for prey_i in range(self.n_preys):
-            if self.alive_preys[prey_i]:
-                prey_x, prey_y = self.prey_positions_idx[prey_i, 0], self.prey_positions_idx[prey_i, 1]
-                if abs(agent_x - prey_x) <= 1 and abs(agent_y - prey_y) <= 1:
-                    arr[prey_i] = 1
 
         move = np.zeros(4)
         for move_i in range(4):
-            if move_i == 0:
-                target_x, target_y = agent_x, agent_y + 1
-            elif move_i == 1:
-                target_x, target_y = agent_x + 1, agent_y
-            elif move_i == 2:
-                target_x, target_y = agent_x, agent_y - 1
-            elif move_i == 3:
-                target_x, target_y = agent_x - 1, agent_y
-
+            target_x = agent_x + self.neighbors[move_i][0]
+            target_y = agent_y + self.neighbors[move_i][1]
             if 0 <= target_x < self.map_size and 0 <= target_y < self.map_size:
                 move[move_i] = 1
 
-        return arr.tolist() + move.tolist() + [1]
+        catch = np.zeros(4)
+        for catch_i in range(4):
+            target_x = agent_x + self.neighbors[catch_i][0]
+            target_y = agent_y + self.neighbors[catch_i][1]
+            if 0 <= target_x < self.map_size and 0 <= target_y < self.map_size and self.prey_positions[target_x, target_y] > 0:
+                catch[catch_i] = 1
+
+        move *= self.alive_agents[agent_id]
+        catch *= self.alive_agents[agent_id]
+        return catch.tolist() + move.tolist() + [1]
 
     def get_total_actions(self):
         """Returns the total number of actions an agent could ever take."""
@@ -319,6 +335,7 @@ class PursuitEnv(MultiAgentEnv):
             self.prey_positions_idx[prey_i, 1] = prey_y
 
         self.alive_preys = np.ones(self.n_preys)
+        self.alive_agents = np.ones(self.n_agents)
 
         for agent_i in range(self.n_agents):
             agent_x = np.random.randint(low=0, high=self.map_size)
