@@ -328,16 +328,18 @@ class CASECMAC(object):
         f_ij = (f_ij + f_ij.permute(0, 2, 1, 4, 3).detach()) / 2.
         return f_ij, history_cos_similarity
 
+    def _variance(self, a, mask):
+        mean = (a * mask).sum(-1) / mask.sum(-1)
+        var = ((a - mean.unsqueeze(-1)) ** 2 * mask).sum(-1) / mask.sum(-1)
+        return var
+
     def construction(self, f_i, delta_ij, q_ij, his_cos_sim, atten_ij, ep_batch, t, target_delta_ij=None,
                      target_q_ij=None, target_his_cos_sim=None, target_atten_ij=None, available_actions=None):
         # available_actions: (bs,n,|A|)
-        available_actions_new = available_actions.detach().unsqueeze(dim=1).unsqueeze(dim=-1).repeat(1, self.n_agents,
-                                                                                                     1, self.n_actions,
-                                                                                                     1)
-        available_actions_new_1 = available_actions_new.view(-1, self.n_agents * self.n_agents, self.n_actions,
-                                                             self.n_actions)
-        available_actions_new_2 = available_actions_new.view(-1, self.n_agents * self.n_agents,
-                                                             self.n_actions * self.n_actions)
+        available_actions_new = available_actions.detach().unsqueeze(dim=1).unsqueeze(dim=-2).repeat(1, self.n_agents, 1, self.n_actions, 1)\
+                                * available_actions.detach().unsqueeze(dim=2).unsqueeze(dim=-1).repeat(1, 1, self.n_agents, 1, self.n_actions)
+        available_actions_new1 = available_actions_new.view(-1, self.n_agents * self.n_agents, self.n_actions, self.n_actions)
+        available_actions_new2 = available_actions_new.view(-1, self.n_agents * self.n_agents, self.n_actions * self.n_actions)
         x = f_i.clone()
 
         if self.random_graph:
@@ -352,29 +354,26 @@ class CASECMAC(object):
         else:
             if self.construction_q_var:
                 if target_q_ij is not None:
-                    indicator = (target_q_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions,
-                                                           self.n_actions) * available_actions_new_1).var(-1).max(-1)[0]
+                    indicator = self._variance(target_q_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions, self.n_actions),
+                                               available_actions_new1).max(-1)[0]
                 else:
-                    indicator = (q_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions,
-                                                    self.n_actions) * available_actions_new_1).var(-1).max(-1)[0]
+                    indicator = self._variance(q_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions, self.n_actions),
+                                               available_actions_new1).max(-1)[0]
 
             elif self.construction_delta_var:
                 if target_delta_ij is not None:
-                    indicator = (target_delta_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions,
-                                                               self.n_actions) * available_actions_new_1).var(-1).max(
-                        -1)[0]
+                    indicator = self._variance(target_delta_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions,
+                                                               self.n_actions), available_actions_new1).max(-1)[0]
                 else:
-                    indicator = (delta_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions,
-                                                        self.n_actions) * available_actions_new_1).var(-1).max(-1)[0]
+                    indicator = self._variance(delta_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions,
+                                                        self.n_actions), available_actions_new1).max(-1)[0]
             elif self.construction_delta_abs:
                 if target_delta_ij is not None:
-                    indicator = (target_delta_ij.detach().view(-1, self.n_agents * self.n_agents,
-                                                               self.n_actions * self.n_actions) * available_actions_new_2).max(
-                        -1)[0]
+                    indicator = (target_delta_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions * self.n_actions)
+                                 * available_actions_new2).abs().max(-1)[0]
                 else:
-                    indicator = (delta_ij.detach().view(-1, self.n_agents * self.n_agents,
-                                                        self.n_actions * self.n_actions) * available_actions_new_2).max(
-                        -1)[0]
+                    indicator = (delta_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions * self.n_actions)
+                                 * available_actions_new2).abs().max(-1)[0]
             elif self.construction_history_similarity:
                 if target_his_cos_sim is not None:
                     indicator = target_his_cos_sim.view(-1, self.n_agents * self.n_agents)
@@ -388,7 +387,6 @@ class CASECMAC(object):
             else:
                 indicator = None
                 raise NotImplementedError
-            # print(indicator)
 
             adj_tensor = self.wo_diag.repeat(self.bs, 1, 1).view(-1, self.n_agents * self.n_agents) * indicator
 
