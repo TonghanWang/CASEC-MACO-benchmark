@@ -166,9 +166,12 @@ class CASECMAC(object):
 
         # Unavailable actions have a utility of -inf, which propagates throughout message passing
         if available_actions is not None:
-            available_actions_i = available_actions.unsqueeze(dim=2).unsqueeze(dim=2).repeat(1, 1, self.n_agents, self.n_agents, 1)
-            available_actions_j = available_actions.unsqueeze(dim=2).unsqueeze(dim=1).repeat(1, self.n_agents, 1, self.n_agents, 1)
-            available_actions_k = available_actions.unsqueeze(dim=1).unsqueeze(dim=1).repeat(1, self.n_agents, self.n_agents, 1, 1)
+            available_actions_i = available_actions.unsqueeze(dim=2).unsqueeze(dim=2).repeat(1, 1, self.n_agents,
+                                                                                             self.n_agents, 1)
+            available_actions_j = available_actions.unsqueeze(dim=2).unsqueeze(dim=1).repeat(1, self.n_agents, 1,
+                                                                                             self.n_agents, 1)
+            available_actions_k = available_actions.unsqueeze(dim=1).unsqueeze(dim=1).repeat(1, self.n_agents,
+                                                                                             self.n_agents, 1, 1)
 
         for _ in range(k):
             # Message from variable node i to function node g:
@@ -176,7 +179,9 @@ class CASECMAC(object):
             q_left_down = q_left_down_sum.unsqueeze(dim=-2).unsqueeze(dim=-2).repeat(1, 1, self.n_agents, self.n_agents,
                                                                                      1) * adj_new_e - r_down_left
             # Normalize
-            q_left_down = q_left_down - (q_left_down * available_actions_i).sum(dim=-1, keepdim=True) / available_actions_i.sum(dim=-1, keepdim=True)
+            q_left_down = q_left_down - (q_left_down * available_actions_i).sum(dim=-1,
+                                                                                keepdim=True) / available_actions_i.sum(
+                dim=-1, keepdim=True)
 
             # Message from function node g to variable node i:
             eye3_ik = self.eye3_ik.repeat(self.bs, 1, 1, 1) * adj_new.bool()
@@ -185,8 +190,10 @@ class CASECMAC(object):
             sum_q_h_exclude_i = (q_left_down * adj_new_e).sum(1).unsqueeze(1).repeat(1, self.n_agents, 1, 1,
                                                                                      1) - q_left_down
             if available_actions is not None:
-                sum_q_h_exclude_i[eye3_ik] = sum_q_h_exclude_i[eye3_ik].masked_fill_(available_actions_j[eye3_ik] == 0, -float('inf'))
-                sum_q_h_exclude_i[eye3_ij] = sum_q_h_exclude_i[eye3_ij].masked_fill_(available_actions_k[eye3_ij] == 0, -float('inf'))
+                sum_q_h_exclude_i[eye3_ik] = sum_q_h_exclude_i[eye3_ik].masked_fill_(available_actions_j[eye3_ik] == 0,
+                                                                                     -float('inf'))
+                sum_q_h_exclude_i[eye3_ij] = sum_q_h_exclude_i[eye3_ij].masked_fill_(available_actions_k[eye3_ij] == 0,
+                                                                                     -float('inf'))
             r_down_left[eye3_ik] = (q_ij_new[eye3_ik] + sum_q_h_exclude_i[eye3_ik].unsqueeze(-1)).max(dim=-2)[0]
             r_down_left[eye3_ij] = (q_ij_new[eye3_ij] + sum_q_h_exclude_i[eye3_ij].unsqueeze(-2)).max(dim=-1)[0]
 
@@ -235,10 +242,12 @@ class CASECMAC(object):
                 target_delta_ij=None, target_q_ij=None, target_his_cos_sim=None, target_atten_ij=None):
         # Calculate the utilities of each agent i and the incremental matrix delta for each agent pair (i&j).
         x, adj, edge_attr, q_ij = self.construction(f_i, delta_ij, q_ij, his_cos_sim, atten_ij, ep_batch, t,
-                                                    target_delta_ij, target_q_ij, target_his_cos_sim, target_atten_ij)
+                                                    target_delta_ij, target_q_ij, target_his_cos_sim, target_atten_ij,
+                                                    available_actions=ep_batch['avail_actions'][:, t])
 
         # (bs,n,|A|) = (b,n,|A|), (b,n,n), (b,E,|A|,|A|)
-        x_out = self.MaxSum_new(x.detach(), adj.detach(), q_ij.detach(), available_actions=ep_batch['avail_actions'][:, t])
+        x_out = self.MaxSum_new(x.detach(), adj.detach(), q_ij.detach(),
+                                available_actions=ep_batch['avail_actions'][:, t])
         return x_out
 
     def caller_ip_q(self, ep_batch, t):
@@ -320,7 +329,15 @@ class CASECMAC(object):
         return f_ij, history_cos_similarity
 
     def construction(self, f_i, delta_ij, q_ij, his_cos_sim, atten_ij, ep_batch, t, target_delta_ij=None,
-                     target_q_ij=None, target_his_cos_sim=None, target_atten_ij=None):
+                     target_q_ij=None, target_his_cos_sim=None, target_atten_ij=None, available_actions=None):
+        # available_actions: (bs,n,|A|)
+        available_actions_new = available_actions.detach().unsqueeze(dim=1).unsqueeze(dim=-1).repeat(1, self.n_agents,
+                                                                                                     1, self.n_actions,
+                                                                                                     1)
+        available_actions_new_1 = available_actions_new.view(-1, self.n_agents * self.n_agents, self.n_actions,
+                                                             self.n_actions)
+        available_actions_new_2 = available_actions_new.view(-1, self.n_agents * self.n_agents,
+                                                             self.n_actions * self.n_actions)
         x = f_i.clone()
 
         if self.random_graph:
@@ -335,36 +352,29 @@ class CASECMAC(object):
         else:
             if self.construction_q_var:
                 if target_q_ij is not None:
-                    indicator = \
-                        target_q_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions,
-                                                  self.n_actions).var(
-                            -1).max(-1)[0]
+                    indicator = (target_q_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions,
+                                                           self.n_actions) * available_actions_new_1).var(-1).max(-1)[0]
                 else:
-                    indicator = \
-                        q_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions, self.n_actions).var(
-                            -1).max(-1)[0]
+                    indicator = (q_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions,
+                                                    self.n_actions) * available_actions_new_1).var(-1).max(-1)[0]
 
             elif self.construction_delta_var:
                 if target_delta_ij is not None:
-                    indicator = \
-                        target_delta_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions,
-                                                      self.n_actions).var(
-                            -1).max(-1)[0]
+                    indicator = (target_delta_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions,
+                                                               self.n_actions) * available_actions_new_1).var(-1).max(
+                        -1)[0]
                 else:
-                    indicator = \
-                        delta_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions, self.n_actions).var(
-                            -1).max(
-                            -1)[0]
+                    indicator = (delta_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions,
+                                                        self.n_actions) * available_actions_new_1).var(-1).max(-1)[0]
             elif self.construction_delta_abs:
                 if target_delta_ij is not None:
-                    indicator = \
-                        target_delta_ij.detach().view(-1, self.n_agents * self.n_agents,
-                                                      self.n_actions * self.n_actions).max(
-                            -1)[0]
+                    indicator = (target_delta_ij.detach().view(-1, self.n_agents * self.n_agents,
+                                                               self.n_actions * self.n_actions) * available_actions_new_2).max(
+                        -1)[0]
                 else:
-                    indicator = \
-                        delta_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions * self.n_actions).max(
-                            -1)[0]
+                    indicator = (delta_ij.detach().view(-1, self.n_agents * self.n_agents,
+                                                        self.n_actions * self.n_actions) * available_actions_new_2).max(
+                        -1)[0]
             elif self.construction_history_similarity:
                 if target_his_cos_sim is not None:
                     indicator = target_his_cos_sim.view(-1, self.n_agents * self.n_agents)
