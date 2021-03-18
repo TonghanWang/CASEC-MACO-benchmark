@@ -336,10 +336,11 @@ class CASECMAC(object):
     def construction(self, f_i, delta_ij, q_ij, his_cos_sim, atten_ij, ep_batch, t, target_delta_ij=None,
                      target_q_ij=None, target_his_cos_sim=None, target_atten_ij=None, available_actions=None):
         # available_actions: (bs,n,|A|)
-        available_actions_new = available_actions.detach().unsqueeze(dim=1).unsqueeze(dim=-2).repeat(1, self.n_agents, 1, self.n_actions, 1)\
-                                * available_actions.detach().unsqueeze(dim=2).unsqueeze(dim=-1).repeat(1, 1, self.n_agents, 1, self.n_actions)
-        available_actions_new1 = available_actions_new.view(-1, self.n_agents * self.n_agents, self.n_actions, self.n_actions)
-        available_actions_new2 = available_actions_new.view(-1, self.n_agents * self.n_agents, self.n_actions * self.n_actions)
+        available_actions_i = available_actions.detach().unsqueeze(dim=2).repeat(1, 1, self.n_agents, 1).view(-1, self.n_agents * self.n_agents, self.n_actions)
+        available_actions_j = available_actions.detach().unsqueeze(dim=1).unsqueeze(dim=-2)\
+            .repeat(1, self.n_agents, 1, self.n_actions, 1).view(-1, self.n_agents * self.n_agents, self.n_actions, self.n_actions)
+        available_actions_ij = (available_actions_i.unsqueeze(dim=-1).repeat(1, 1, 1, self.n_actions) * available_actions_j)\
+            .view(-1, self.n_agents * self.n_agents, self.n_actions * self.n_actions)
         x = f_i.clone()
 
         if self.random_graph:
@@ -354,26 +355,26 @@ class CASECMAC(object):
         else:
             if self.construction_q_var:
                 if target_q_ij is not None:
-                    indicator = self._variance(target_q_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions, self.n_actions),
-                                               available_actions_new1).max(-1)[0]
+                    indicator = self._variance(target_q_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions, self.n_actions), available_actions_j)
+                    indicator = (indicator * available_actions_i).max(-1)[0]
                 else:
-                    indicator = self._variance(q_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions, self.n_actions),
-                                               available_actions_new1).max(-1)[0]
+                    indicator = self._variance(q_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions, self.n_actions), available_actions_j)
+                    indicator = (indicator * available_actions_i).max(-1)[0]
 
             elif self.construction_delta_var:
                 if target_delta_ij is not None:
-                    indicator = self._variance(target_delta_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions,
-                                                               self.n_actions), available_actions_new1).max(-1)[0]
+                    indicator = self._variance(target_delta_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions, self.n_actions), available_actions_j)
+                    indicator = (indicator * available_actions_i).max(-1)[0]
                 else:
-                    indicator = self._variance(delta_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions,
-                                                        self.n_actions), available_actions_new1).max(-1)[0]
+                    indicator = self._variance(delta_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions, self.n_actions), available_actions_j)
+                    indicator = (indicator * available_actions_i).max(-1)[0]
             elif self.construction_delta_abs:
                 if target_delta_ij is not None:
                     indicator = (target_delta_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions * self.n_actions)
-                                 * available_actions_new2).abs().max(-1)[0]
+                                 * available_actions_ij).abs().max(-1)[0]
                 else:
                     indicator = (delta_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions * self.n_actions)
-                                 * available_actions_new2).abs().max(-1)[0]
+                                 * available_actions_ij).abs().max(-1)[0]
             elif self.construction_history_similarity:
                 if target_his_cos_sim is not None:
                     indicator = target_his_cos_sim.view(-1, self.n_agents * self.n_agents)
