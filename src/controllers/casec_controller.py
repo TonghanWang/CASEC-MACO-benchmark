@@ -2,6 +2,7 @@ import copy
 
 import torch as th
 import torch.nn as nn
+import torch_scatter
 from components.action_selectors import REGISTRY as action_REGISTRY
 from modules.action_encoders import REGISTRY as action_encoder_REGISTRY
 from modules.agents import REGISTRY as agent_REGISTRY
@@ -43,38 +44,41 @@ class CASECMAC(object):
         diag = th.diag(diag, 0)
         self.wo_diag = (wo_diag - diag).to(args.device).unsqueeze(0)
 
-        self.pre_matrix = th.zeros(self.n_agents, self.n_agents, self.n_agents)
-        for agent_i in range(self.n_agents):
-            self.pre_matrix[agent_i, agent_i, :] = 1
-            self.pre_matrix[agent_i, :, agent_i] = 1
-        self.pre_matrix = self.pre_matrix.to(args.device)
+        # self.pre_matrix = th.zeros(self.n_agents, self.n_agents, self.n_agents)
+        # for agent_i in range(self.n_agents):
+        #     self.pre_matrix[agent_i, agent_i, :] = 1
+        #     self.pre_matrix[agent_i, :, agent_i] = 1
+        # self.pre_matrix = self.pre_matrix.to(args.device)
 
         self.eye2 = th.eye(self.n_agents).bool()
         self.eye2 = self.eye2.to(args.device)
 
-        self.eye3 = th.zeros(self.n_agents, self.n_agents, self.n_agents)
-        for agent_i in range(self.n_agents):
-            self.eye3[agent_i, agent_i, agent_i] = 1
-        self.eye3 = self.eye3.bool()
-        self.eye3 = self.eye3.to(args.device)
-
-        self.eye3_ik = th.zeros(self.n_agents, self.n_agents, self.n_agents)
-        for agent_i in range(self.n_agents):
-            self.eye3_ik[agent_i, :, agent_i] = 1
-        self.eye3_ik = self.eye3_ik.bool()
-        self.eye3_ik = self.eye3_ik.to(args.device).unsqueeze(0)
-
-        self.eye3_ij = th.zeros(self.n_agents, self.n_agents, self.n_agents)
-        for agent_i in range(self.n_agents):
-            self.eye3_ij[agent_i, agent_i, :] = 1
-        self.eye3_ij = self.eye3_ij.bool()
-        self.eye3_ij = self.eye3_ij.to(args.device).unsqueeze(0)
+        # self.eye3 = th.zeros(self.n_agents, self.n_agents, self.n_agents)
+        # for agent_i in range(self.n_agents):
+        #     self.eye3[agent_i, agent_i, agent_i] = 1
+        # self.eye3 = self.eye3.bool()
+        # self.eye3 = self.eye3.to(args.device)
+        #
+        # self.eye3_ik = th.zeros(self.n_agents, self.n_agents, self.n_agents)
+        # for agent_i in range(self.n_agents):
+        #     self.eye3_ik[agent_i, :, agent_i] = 1
+        # self.eye3_ik = self.eye3_ik.bool()
+        # self.eye3_ik = self.eye3_ik.to(args.device).unsqueeze(0)
+        #
+        # self.eye3_ij = th.zeros(self.n_agents, self.n_agents, self.n_agents)
+        # for agent_i in range(self.n_agents):
+        #     self.eye3_ij[agent_i, agent_i, :] = 1
+        # self.eye3_ij = self.eye3_ij.bool()
+        # self.eye3_ij = self.eye3_ij.to(args.device).unsqueeze(0)
 
         # self.q_left_up = th.zeros(self.n_agents, self.n_agents, self.n_actions).to(args.device)
-        self.q_left_down = th.zeros(self.n_agents, self.n_agents, self.n_agents, self.n_actions).to(args.device)
-        self.r_up_left = th.zeros(self.n_agents, self.n_agents, self.n_actions).to(args.device)
-        self.r_down_left = th.zeros(self.n_agents, self.n_agents, self.n_agents, self.n_actions).to(args.device)
-        self.x_new = th.zeros(self.n_agents, self.n_agents, self.n_actions).to(args.device)
+        # self.q_left_down = th.zeros(self.n_agents, self.n_agents, self.n_agents, self.n_actions).to(args.device)
+        # self.r_up_left = th.zeros(self.n_agents, self.n_agents, self.n_actions).to(args.device)
+        # self.r_down_left = th.zeros(self.n_agents, self.n_agents, self.n_agents, self.n_actions).to(args.device)
+        # self.x_new = th.zeros(self.n_agents, self.n_agents, self.n_actions).to(args.device)
+        self.edges_from = th.tensor([[i] * self.n_agents for i in range(self.n_agents)]).view(-1).unsqueeze(0).to(args.device)
+        self.edges_to = th.tensor([[i for i in range(self.n_agents)] * self.n_agents]).view(-1).unsqueeze(0).to(args.device)
+        self.message = th.zeros(2, 1, self.n_actions).to(args.device)
 
         # adjacency matrix
         self.full_graph = args.full_graph
@@ -104,101 +108,48 @@ class CASECMAC(object):
         self.atten_query = nn.Linear(args.rnn_hidden_dim, args.atten_dim)
         self.atten_sofmax = nn.Softmax(dim=1)
 
-    def message_passing(self, x, adj, edge_attr, q_ij, k=3):
-        # (bs,n,|A|), (bs,n,n), (bs,E,|A|,|A|), (bs,n,n,|A|,|A|) -> (bs,n,|A|)
-        shape_e = edge_attr.shape[1]
-        q_left_down = self.temp_tensor.unsqueeze(0).unsqueeze(-2).repeat(self.bs, 1, shape_e, 1)
-        r_up_left = self.temp_tensor.unsqueeze(0).repeat(self.bs, 1, 1)
-        r_down_left = self.temp_tensor.unsqueeze(0).unsqueeze(-2).repeat(self.bs, 1, shape_e, 1)
-        # (bs,n,|E|,|A|), (bs,n,|A|), (bs,n,|E|,|A|)
-        adj_nonzero = th.nonzero(adj)  # (bs,n,|E|)
-        adj_nonzero[:, 2] = th.tensor(list(range(shape_e)) * self.bs)
-        adj_new = th.sparse_coo_tensor(adj_nonzero.T, th.tensor([1] * self.bs * shape_e).to('cuda'),
-                                       [self.bs, self.n_agents, shape_e]).to_dense()
-        adj_new_e = adj_new.unsqueeze(-1).repeat(1, 1, 1, self.n_actions)
-
-        edge_attr_new = edge_attr.unsqueeze(dim=1).repeat(1, self.n_agents, 1, 1, 1)  # (bs,n,|E|,|A|,|A|)
-        q_ij_new = edge_attr_new * adj_new.unsqueeze(dim=-1).unsqueeze(dim=-1)  # (bs,n,|E|,|A|,|A|)
-
-        for _ in range(k):
-            # Message from variable node i to function node g:
-            # left -> up:
-            # q_left_up = (adj_new.unsqueeze(dim=-1) * r_down_left).sum(dim=-2)
-            # left -> down:
-            q_left_down_1 = r_up_left.unsqueeze(dim=-2).repeat(1, 1, shape_e, 1) * adj_new_e
-            q_left_down_sum = (adj_new_e * r_down_left).sum(dim=-2)
-            q_left_down_2 = q_left_down_sum.unsqueeze(dim=-2).repeat(1, 1, shape_e, 1) * adj_new_e - r_down_left
-            q_left_down = q_left_down_1 + q_left_down_2
-            # Normalize
-            q_left_down = q_left_down - q_left_down.mean(dim=-1, keepdim=True)
-
-            # Message from function node g to variable node i:
-            # up -> left:
-            r_up_left = x
-            # down -> left:K
-            sum_q_h_exclude_i = (q_left_down * adj_new_e).sum(1).unsqueeze(1).repeat(1, self.n_agents, 1,
-                                                                                     1) * adj_new_e - q_left_down
-            r_down_left = (q_ij_new + sum_q_h_exclude_i.unsqueeze(-2)).max(dim=-1)[0]
-
-        # Calculate the z value
-        z = (adj_new_e * r_down_left).sum(dim=-2) + r_up_left
-        return z
-
-    def MaxSum_new(self, x, adj, q_ij, available_actions=None, k=3):
+    def MaxSum_faster(self, x, adj, q_ij, available_actions=None, k=5):
         # (bs,n,|A|), (bs,n,n), (bs,n,n,|A|,|A|), (bs,n,|A|) -> (bs,n,|A|)
-        # All relevant tensors should be double to reduce accumulating precision loss
         adj[:, self.eye2] = 0.
-        num_edges = adj.sum(-1).sum(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
-        x = x / self.n_agents
-        q_ij = q_ij / num_edges
 
-        # q_left_up = self.q_left_up.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1)
-        q_left_down = self.q_left_down.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1, 1)
-        # r_up_left = self.r_up_left.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1)
-        r_down_left = self.r_down_left.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1, 1)
-        # (bs,n,n,|A|), (bs,n,n,n,|A|), (bs,n,n,|A|), (bs,n,n,n,|A|)
+        num_edges = int(adj[0].sum(-1).sum(-1))  # Samples in the batch should have the same number of edges
+        edges_from = self.edges_from.repeat(x.shape[0], 1)[adj.view(-1, self.n_agents ** 2) == 1].view(-1, num_edges)
+        edges_to = self.edges_to.repeat(x.shape[0], 1)[adj.view(-1, self.n_agents ** 2) == 1].view(-1, num_edges)
+        nodes = th.cat([edges_from, edges_to], dim=1)  # (bs,2|E|)
 
-        adj_new = adj.unsqueeze(dim=1).repeat(1, self.n_agents, 1, 1) * self.pre_matrix.unsqueeze(dim=0).repeat(self.bs,
-                                                                                                                1, 1, 1)
-        adj_new_e = adj_new.unsqueeze(-1).repeat(1, 1, 1, 1, self.n_actions)
-        q_ij_new = q_ij.unsqueeze(dim=1).repeat(1, self.n_agents, 1, 1, 1, 1) * self.pre_matrix.unsqueeze(
-            dim=0).unsqueeze(dim=-1).unsqueeze(dim=-1).repeat(self.bs, 1, 1, 1, 1, 1)
+        q_ij_new = q_ij[adj == 1].view(-1, num_edges, self.n_actions, self.n_actions)
+        # q_left_down = self.message.clone().unsqueeze(0).repeat(self.bs, 1, num_edges, 1)
+        r_down_left = self.message.clone().unsqueeze(0).repeat(self.bs, 1, num_edges, 1)
+        # (bs,2,|E|,|A|,|A|),(bs,2,|E|,|A|), (bs,2,|E|,|A|)
 
         # Unavailable actions have a utility of -inf, which propagates throughout message passing
         if available_actions is not None:
-            available_actions_i = available_actions.unsqueeze(dim=2).unsqueeze(dim=2).repeat(1, 1, self.n_agents,
-                                                                                             self.n_agents, 1)
-            available_actions_j = available_actions.unsqueeze(dim=2).unsqueeze(dim=1).repeat(1, self.n_agents, 1,
-                                                                                             self.n_agents, 1)
-            available_actions_k = available_actions.unsqueeze(dim=1).unsqueeze(dim=1).repeat(1, self.n_agents,
-                                                                                             self.n_agents, 1, 1)
+            x = x.masked_fill(available_actions == 0, -99999999)
+            available_actions_new = th.gather(available_actions, dim=1,\
+                    index=nodes.unsqueeze(-1).repeat(1, 1, self.n_actions)).view(-1, 2, num_edges, self.n_actions)
 
         for _ in range(k):
             # Message from variable node i to function node g:
-            q_left_down_sum = (adj_new_e * r_down_left).sum(dim=-2).sum(dim=-2) + x
-            q_left_down = q_left_down_sum.unsqueeze(dim=-2).unsqueeze(dim=-2).repeat(1, 1, self.n_agents, self.n_agents,
-                                                                                     1) * adj_new_e - r_down_left
+            q_left_down_sum = torch_scatter.scatter_add(src=r_down_left.view(-1, 2 * num_edges, self.n_actions), \
+                    index=nodes, dim=1, dim_size=self.n_agents)
+            q_left_down_sum += x
+            q_left_down = th.gather(q_left_down_sum, dim=1,\
+                    index=nodes.unsqueeze(-1).repeat(1, 1, self.n_actions)).view(-1, 2, num_edges, self.n_actions)
+            q_left_down -= r_down_left
             # Normalize
-            q_left_down = q_left_down - (q_left_down * available_actions_i).sum(dim=-1,
-                                                                                keepdim=True) / available_actions_i.sum(
-                dim=-1, keepdim=True)
+            if available_actions is not None:
+                q_left_down -= (q_left_down * available_actions_new).sum(-1, keepdim=True) / available_actions_new.sum(-1, keepdim=True)
+            else:
+                q_left_down -= q_left_down.mean(dim=-1, keepdim=True)
 
             # Message from function node g to variable node i:
-            eye3_ik = self.eye3_ik.repeat(self.bs, 1, 1, 1) * adj_new.bool()
-            eye3_ij = self.eye3_ij.repeat(self.bs, 1, 1, 1) * adj_new.bool()
-
-            sum_q_h_exclude_i = (q_left_down * adj_new_e).sum(1).unsqueeze(1).repeat(1, self.n_agents, 1, 1,
-                                                                                     1) - q_left_down
-            if available_actions is not None:
-                sum_q_h_exclude_i[eye3_ik] = sum_q_h_exclude_i[eye3_ik].masked_fill_(available_actions_j[eye3_ik] == 0,
-                                                                                     -float('inf'))
-                sum_q_h_exclude_i[eye3_ij] = sum_q_h_exclude_i[eye3_ij].masked_fill_(available_actions_k[eye3_ij] == 0,
-                                                                                     -float('inf'))
-            r_down_left[eye3_ik] = (q_ij_new[eye3_ik] + sum_q_h_exclude_i[eye3_ik].unsqueeze(-1)).max(dim=-2)[0]
-            r_down_left[eye3_ij] = (q_ij_new[eye3_ij] + sum_q_h_exclude_i[eye3_ij].unsqueeze(-2)).max(dim=-1)[0]
+            r_down_left[:, 0] = (q_ij_new + q_left_down[:, 1].unsqueeze(-2)).max(dim=-1)[0]
+            r_down_left[:, 1] = (q_ij_new + q_left_down[:, 0].unsqueeze(-1)).max(dim=-2)[0]
 
         # Calculate the z value
-        z = (adj_new_e * r_down_left).sum(dim=-2).sum(dim=-2) + x
+        z = torch_scatter.scatter_add(src=r_down_left.view(-1, 2 * num_edges, self.n_actions), \
+                                      index=nodes, dim=1, dim_size=self.n_agents)
+        z += x
         return z
 
     def select_actions(self, ep_batch, t_ep, t_env, bs=slice(None), test_mode=False):
@@ -246,8 +197,8 @@ class CASECMAC(object):
                                                     available_actions=ep_batch['avail_actions'][:, t])
 
         # (bs,n,|A|) = (b,n,|A|), (b,n,n), (b,E,|A|,|A|)
-        x_out = self.MaxSum_new(x.detach(), adj.detach(), q_ij.detach(),
-                                available_actions=ep_batch['avail_actions'][:, t])
+        # x_out = self.MaxSum_new(x.detach(), adj.detach(), q_ij.detach(), available_actions=ep_batch['avail_actions'][:, t])
+        x_out = self.MaxSum_faster(x.detach(), adj.detach(), q_ij.detach(), available_actions=ep_batch['avail_actions'][:, t])
         return x_out
 
     def caller_ip_q(self, ep_batch, t):
@@ -343,17 +294,12 @@ class CASECMAC(object):
             .view(-1, self.n_agents * self.n_agents, self.n_actions * self.n_actions)
         x = f_i.clone()
 
-        if self.random_graph:
-            adj = th.zeros(self.bs, self.n_agents, self.n_agents).to(self.args.device)
-            while adj.sum() == 0:
-                threshold = self.args.threshold
-                adj = th.ones(self.bs, self.n_agents, self.n_agents)
-                adj = adj * (th.rand(self.bs, self.n_agents, self.n_agents) < threshold)
-                adj = adj.float().to(self.args.device)
-        elif self.full_graph:
+        if self.full_graph:
             adj = self.adj.repeat(self.bs, 1, 1)
         else:
-            if self.construction_q_var:
+            if self.random_graph:
+                indicator = th.rand(self.bs, self.n_agents * self.n_agents).to(self.args.device)
+            elif self.construction_q_var:
                 if target_q_ij is not None:
                     indicator = self._variance(target_q_ij.detach().view(-1, self.n_agents * self.n_agents, self.n_actions, self.n_actions), available_actions_j)
                     indicator = (indicator * available_actions_i).max(-1)[0]
@@ -389,8 +335,8 @@ class CASECMAC(object):
                 indicator = None
                 raise NotImplementedError
 
-            adj_tensor = self.wo_diag.repeat(self.bs, 1, 1).view(-1, self.n_agents * self.n_agents) * indicator
-
+            # adj_tensor = self.wo_diag.repeat(self.bs, 1, 1).view(-1, self.n_agents * self.n_agents) * indicator
+            adj_tensor = indicator.masked_fill(self.wo_diag.repeat(self.bs, 1, 1).view(-1, self.n_agents * self.n_agents) == 0, -99999999)
             adj_tensor_topk = \
                 th.topk(adj_tensor, int(self.n_agents * self.n_agents * self.args.threshold // 2 * 2), dim=-1)[1]
             adj = self.zeros.repeat(self.bs, 1, 1).view(-1, self.n_agents * self.n_agents)
