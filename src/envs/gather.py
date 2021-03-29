@@ -17,11 +17,12 @@ class GatherEnv(MultiAgentEnv):
     def __init__(
             self,
             n_agents=7,
-            episode_limit=10,
+            episode_limit=20,
             map_height=3,
-            map_width=5,
+            map_width=7,
             catch_reward=10,
-            catch_fail_reward=0,
+            catch_fail_reward=-5,
+            target_reward=0.000,
             other_reward=5,
             obs_last_action=False,
             state_last_action=True,
@@ -37,6 +38,7 @@ class GatherEnv(MultiAgentEnv):
         self.catch_reward = catch_reward
         self.catch_fail_reward = catch_fail_reward
         self.other_reward = other_reward
+        self.target_reward = target_reward
 
         # Observations and state
         self.obs_last_action = obs_last_action
@@ -59,7 +61,7 @@ class GatherEnv(MultiAgentEnv):
 
         # Configuration initialization
         self.agent_positions_idx = np.zeros((self.n_agents, 2)).astype(int)
-        target_count = [[], []]
+        # target_count = [[], [], []]
         self.agent_target = [np.zeros(2) for _ in range(self.n_agents)]
 
         for agent_i in range(self.n_agents):
@@ -69,22 +71,39 @@ class GatherEnv(MultiAgentEnv):
             self.agent_positions_idx[agent_i, 0] = agent_y
             self.agent_positions_idx[agent_i, 1] = agent_x
 
-            if self._distance(agent_x, 1, agent_y, 1) < self._distance(agent_x, 3, agent_y, 1):
-                target_count[0].append(agent_i)
+            # if self._distance(agent_x, 1, agent_y, 1) < self._distance(agent_x, 3, agent_y, 1):
+            #     target_count[0].append(agent_i)
+            # else:
+            #     target_count[1].append(agent_i)
+
+        # if len(target_count[0]) > len(target_count[1]):
+        #     self.target = np.array([1, 1])
+        #     self.n_target = np.array([1, 3])
+        #     self.target_idx = 0
+        # else:
+        #     self.target = np.array([1, 3])
+        #     self.n_target = np.array([1, 1])
+        #     self.target_idx = 1
+
+        # for agent_i in target_count[self.target_idx]:
+        #    self.agent_target[agent_i] = self.target
+
+        for agent_i in range(self.n_agents):
+            agent_x = self.agent_positions_idx[agent_i, 1]
+            agent_y = self.agent_positions_idx[agent_i, 0]
+            if self._distance(agent_x, 0, agent_y, 1) < self._distance(agent_x, 2, agent_y, 1):
+                self.agent_target[agent_i] = np.array([1, 0])
             else:
-                target_count[1].append(agent_i)
+                if self._distance(agent_x, 4, agent_y, 1) <= self._distance(agent_x, 2, agent_y, 1):
+                    self.agent_target[agent_i] = np.array([1, 4])
+                else:
+                    self.agent_target[agent_i] = np.array([1, 2])
 
-        if len(target_count[0]) > len(target_count[1]):
-            self.target = np.array([1, 1])
-            self.n_target = np.array([1, 3])
-            self.target_idx = 0
-        else:
-            self.target = np.array([1, 3])
-            self.n_target = np.array([1, 1])
-            self.target_idx = 1
+        self.target = np.array([1, 0])
+        self.n_target = np.array([1, 2])
+        self.n2_target = np.array([1, 4])
 
-        for agent_i in target_count[self.target_idx]:
-            self.agent_target[agent_i] = self.target
+        self.visited_tar = [0 for agent in range(n_agents)]
 
     def _distance(self, x1, x2, y1, y2):
         return abs(x1 - x2) + abs(y1 - y2)
@@ -101,6 +120,7 @@ class GatherEnv(MultiAgentEnv):
 
         occ_count = 0
         n_occ_count = 0
+        n2_occ_count = 0
 
         # map = np.zeros((self.map_height, self.map_width))
 
@@ -123,9 +143,20 @@ class GatherEnv(MultiAgentEnv):
             # map[target_y, target_x] += 1
 
             if target_x == self.target[1] and target_y == self.target[0]:
+                if self.visited_tar[0] == 0:
+                    reward += self.target_reward
+                    self.visited_tar[0] = 1
                 occ_count += 1
             elif target_x == self.n_target[1] and target_y == self.n_target[0]:
+                if self.visited_tar[0] == 0:
+                    reward += self.target_reward
+                    self.visited_tar[0] = 1
                 n_occ_count += 1
+            elif target_x == self.n2_target[1] and target_y == self.n2_target[0]:
+                if self.visited_tar[0] == 0:
+                    reward += self.target_reward
+                    self.visited_tar[0] = 1
+                n2_occ_count += 1
 
         # print(map)
 
@@ -138,13 +169,18 @@ class GatherEnv(MultiAgentEnv):
         if self._episode_steps >= self.episode_limit:
             terminated = True
 
-            if occ_count == 0:
-                if n_occ_count == self.n_agents:
+            if occ_count + n_occ_count+ n2_occ_count == self.n_agents:
+                if occ_count == 0:
                     reward += self.other_reward
-            elif occ_count < self.n_agents:
-                reward += self.catch_fail_reward
+                elif occ_count < self.n_agents:
+                    reward += self.catch_fail_reward
 
         if terminated:
+            #print("terminated")
+            #print(reward)
+            #print(occ_count)
+            #print(n_occ_count)
+            #print(n2_occ_count)
             self._episode_count += 1
             self.battles_game += 1
 
@@ -156,6 +192,7 @@ class GatherEnv(MultiAgentEnv):
 
     def get_obs_agent(self, agent_id):
         """Returns observation for agent_id."""
+        # return self.agent_positions_idx[agent_id]
         return np.concatenate([self.agent_positions_idx[agent_id], self.agent_target[agent_id]])
 
     def get_obs_size(self):
@@ -199,22 +236,22 @@ class GatherEnv(MultiAgentEnv):
             self.agent_positions_idx[agent_i, 0] = agent_y
             self.agent_positions_idx[agent_i, 1] = agent_x
 
-            if self._distance(agent_x, 1, agent_y, 1) < self._distance(agent_x, 3, agent_y, 1):
-                target_count[0].append(agent_i)
+        for agent_i in range(self.n_agents):
+            agent_x = self.agent_positions_idx[agent_i, 1]
+            agent_y = self.agent_positions_idx[agent_i, 0]
+            if self._distance(agent_x, 0, agent_y, 1) < self._distance(agent_x, 2, agent_y, 1):
+                self.agent_target[agent_i] = np.array([1, 0])
             else:
-                target_count[1].append(agent_i)
+                if self._distance(agent_x, 4, agent_y, 1) <= self._distance(agent_x, 2, agent_y, 1):
+                    self.agent_target[agent_i] = np.array([1, 4])
+                else:
+                    self.agent_target[agent_i] = np.array([1, 2])
 
-        if len(target_count[0]) > len(target_count[1]):
-            self.target = np.array([1, 1])
-            self.n_target = np.array([1, 3])
-            self.target_idx = 0
-        else:
-            self.target = np.array([1, 3])
-            self.n_target = np.array([1, 1])
-            self.target_idx = 1
+        self.target = np.array([1, 0])
+        self.n_target = np.array([1, 2])
+        self.n2_target = np.array([1, 4])
 
-        for agent_i in target_count[self.target_idx]:
-            self.agent_target[agent_i] = self.target
+        self.visited_tar = [0 for agent in range(self.n_agents)]
 
         return self.get_obs(), self.get_state()
 
