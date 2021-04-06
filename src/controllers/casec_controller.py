@@ -111,13 +111,13 @@ class CASECMAC(object):
     def MaxSum_faster(self, x, adj, q_ij, available_actions=None, k=5):
         # (bs,n,|A|), (bs,n,n), (bs,n,n,|A|,|A|), (bs,n,|A|) -> (bs,n,|A|)
         adj[:, self.eye2] = 0.
-        x = x / self.n_agents
-        q_ij = q_ij / self.n_agents ** 2
-
         num_edges = int(adj[0].sum(-1).sum(-1))  # Samples in the batch should have the same number of edges
         edges_from = self.edges_from.repeat(x.shape[0], 1)[adj.view(-1, self.n_agents ** 2) == 1].view(-1, num_edges)
         edges_to = self.edges_to.repeat(x.shape[0], 1)[adj.view(-1, self.n_agents ** 2) == 1].view(-1, num_edges)
         nodes = th.cat([edges_from, edges_to], dim=1)  # (bs,2|E|)
+
+        x = x / self.n_agents
+        q_ij = q_ij / num_edges
 
         q_ij_new = q_ij[adj == 1].view(-1, num_edges, self.n_actions, self.n_actions)
         # q_left_down = self.message.clone().unsqueeze(0).repeat(self.bs, 1, num_edges, 1)
@@ -158,8 +158,9 @@ class CASECMAC(object):
         # (bs,n,|A|), (bs,n,n), (bs,n,n,|A|,|A|), (bs,n,|A|) -> (bs,n,|A|)
         # In this implementation, different samples may have different number of edges
         adj[:, self.eye2] = 0.
+        num_edges = adj[0].sum(-1).sum(-1).unsqueeze(-1).unsqueeze(-1)
         x = x / self.n_agents
-        q_ij = q_ij / self.n_agents ** 2
+        q_ij = q_ij / num_edges
 
         # q_left_up = self.q_left_up.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1)
         q_left_down = self.q_left_down.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1, 1)
@@ -241,7 +242,7 @@ class CASECMAC(object):
             agent_outs = f_i_gather.squeeze(dim=-1).mean(dim=-1) + (edge_attr * atten_ij).sum(dim=-1).sum(
                 dim=-1) * self.p_lr
         else:
-            agent_outs = f_i_gather.squeeze(dim=-1).mean(dim=-1) + edge_attr.mean(dim=-1).mean(dim=-1) * self.p_lr
+            agent_outs = f_i_gather.squeeze(dim=-1).mean(dim=-1) + edge_attr.sum(dim=-1).sum(dim=-1) / self.n_agents / (self.n_agents - 1) * self.p_lr
 
         agent_outs.unsqueeze_(dim=-1)
         return agent_outs, f_i, delta_ij, q_ij, atten_ij
@@ -290,6 +291,8 @@ class CASECMAC(object):
 
         atten_ij = self._calculate_attention(self.p_hidden_states)
 
+        delta_ij[:, self.eye2] = 0
+        q_ij[:, self.eye2] = 0
         return f_i, delta_ij, q_ij, his_cos_similarity, atten_ij
 
     def _calculate_attention(self, hidden_states):
