@@ -112,17 +112,19 @@ class DisperseEnv(MultiAgentEnv):
 
     def get_obs_agent(self, agent_id):
         """Returns observation for agent_id."""
-        agent_action = self.actions[agent_id]
+        obs_action = np.random.randint(low=0, high=self.n_actions)
         # print([agent_action, self.needs[agent_action]])
         # print([float(x) for x in (self.actions == agent_action)])
         action_one_hot = np.zeros(self.n_actions)
-        action_one_hot[agent_action] = 1.
-        return np.concatenate((action_one_hot, [self.needs[agent_action]], [float(x) for x in (self.actions == agent_action)]))
+        action_one_hot[obs_action] = 1.
+        needs_one_hot = np.zeros(self.n_agents + 1)
+        needs_one_hot[int(self.needs[obs_action])] = 1
+        return np.concatenate((action_one_hot, needs_one_hot, [float(x) for x in (self.actions == obs_action)]))
         # return np.array([agent_action, self.needs[agent_action], (self.actions == agent_action).sum()])
 
     def get_obs_size(self):
         """Returns the size of the observation."""
-        return self.n_actions + 1 + self.n_agents
+        return self.n_actions + self.n_agents + 1 + self.n_agents
 
     def get_state(self):
         """Returns the global state."""
