@@ -43,7 +43,7 @@ edge_threshold_end: 0.01
 edge_threshold_increasing_time: 500000
 
 # Sparseness learning loss
-l1_loss_weight: 0.0001
+l1_loss_weight: 0.00001
 q_var_loss_weight: 0.0001
 delta_var_loss_weight: 0.0001
 l1_loss: False
