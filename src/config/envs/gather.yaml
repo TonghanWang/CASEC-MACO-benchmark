@@ -2,7 +2,7 @@ env: gather
 
 env_args:
   n_agents: 5
-  episode_limit: 20
+  episode_limit: 10
   map_height: 3
   map_width: 5
   catch_reward: 10
