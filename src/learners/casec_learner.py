@@ -71,16 +71,16 @@ class CASECLearner:
 
         chosen_action_qvals = mac_out[:, :-1]  # (bs,t,1)
 
-        # Gather Q_ij
-        q_ij_left_gather_i = actions.unsqueeze(dim=3).unsqueeze(dim=-1).repeat(1, 1, 1,
-                                                                               self.args.n_agents, 1,
-                                                                               self.args.n_actions)
-        q_ij_left_gather_j = actions.unsqueeze(dim=2).unsqueeze(dim=-2).repeat(1, 1, self.args.n_agents,
-                                                                               1, 1, 1)
-        q_ij_left_gather = th.gather(q_ij_left, index=q_ij_left_gather_i, dim=-2)
-        q_ij_left_gather = th.gather(q_ij_left_gather, index=q_ij_left_gather_j, dim=-1).squeeze()
-        q_ij_left_gather = q_ij_left_gather.mean(dim=-1).mean(dim=-1)
-        q_ij_left_gather.unsqueeze_(dim=-1)
+        # # Gather Q_ij
+        # q_ij_left_gather_i = actions.unsqueeze(dim=3).unsqueeze(dim=-1).repeat(1, 1, 1,
+        #                                                                        self.args.n_agents, 1,
+        #                                                                        self.args.n_actions)
+        # q_ij_left_gather_j = actions.unsqueeze(dim=2).unsqueeze(dim=-2).repeat(1, 1, self.args.n_agents,
+        #                                                                        1, 1, 1)
+        # q_ij_left_gather = th.gather(q_ij_left, index=q_ij_left_gather_i, dim=-2)
+        # q_ij_left_gather = th.gather(q_ij_left_gather, index=q_ij_left_gather_j, dim=-1).squeeze()
+        # q_ij_left_gather = q_ij_left_gather.mean(dim=-1).mean(dim=-1)
+        # q_ij_left_gather.unsqueeze_(dim=-1)
 
         # Pick the Q-Values for the actions taken by each agent
         # (bs,t,n) Q value of an action
@@ -147,7 +147,10 @@ class CASECLearner:
             # t_shape = target_q_ij_gather.shape
             # adj_tensor = self.mac.wo_adj.unsqueeze(0).unsqueeze(0).repeat(t_shape[0], t_shape[1], 1, 1).detach()
             # target_max_qvals = f_i_gather.squeeze(dim=-1).sum(dim=-1) + q_ij_gather.sum(dim=-1).sum(dim=-1)
-            target_max_qvals = target_f_i_gather.squeeze(dim=-1).mean(dim=-1) + target_q_ij_gather.sum(dim=-1).sum(dim=-1) / self.n_agents / (self.n_agents - 1)
+            if self.args.construction_attention:
+                target_max_qvals = target_f_i_gather.squeeze(dim=-1).mean(dim=-1) + (target_atten_ij[:, 1:] * target_q_ij_gather).sum(dim=-1).sum(dim=-1)
+            else:
+                target_max_qvals = target_f_i_gather.squeeze(dim=-1).mean(dim=-1) + target_q_ij_gather.sum(dim=-1).sum(dim=-1) / self.n_agents / (self.n_agents - 1)
             target_max_qvals.unsqueeze_(dim=-1)  # (bs,t,1)
         else:
             pass
@@ -249,8 +252,8 @@ class CASECLearner:
                 self.logger.log_stat("action_encoder_grad_norm", pred_grad_norm, t_env)
             self.logger.log_stat("q_taken_mean",
                                  (chosen_action_qvals * mask).sum().item() / (mask_elems * self.args.n_agents), t_env)
-            self.logger.log_stat("q_ij_taken_mean",
-                                 (q_ij_left_gather * mask).sum().item() / (mask_elems * self.args.n_agents), t_env)
+            # self.logger.log_stat("q_ij_taken_mean",
+            #                      (q_ij_left_gather * mask).sum().item() / (mask_elems * self.args.n_agents), t_env)
             self.logger.log_stat("target_mean", (targets * mask).sum().item() / (mask_elems * self.args.n_agents),
                                  t_env)
             self.log_stats_t = t_env

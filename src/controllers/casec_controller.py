@@ -108,7 +108,7 @@ class CASECMAC(object):
         self.atten_query = nn.Linear(args.rnn_hidden_dim, args.atten_dim)
         self.atten_sofmax = nn.Softmax(dim=1)
 
-    def MaxSum_faster(self, x, adj, q_ij, available_actions=None, k=5):
+    def MaxSum_faster(self, x, adj, q_ij, atten_ij=None, available_actions=None, k=5):
         # (bs,n,|A|), (bs,n,n), (bs,n,n,|A|,|A|), (bs,n,|A|) -> (bs,n,|A|)
         adj[:, self.eye2] = 0.
         num_edges = int(adj[0].sum(-1).sum(-1))  # Samples in the batch should have the same number of edges
@@ -117,7 +117,10 @@ class CASECMAC(object):
         nodes = th.cat([edges_from, edges_to], dim=1)  # (bs,2|E|)
 
         x = x / self.n_agents
-        q_ij = q_ij / num_edges
+        if self.construction_attention:
+            q_ij /= (atten_ij * adj).sum(-1).sum(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+        else:
+            q_ij = q_ij / num_edges
 
         q_ij_new = q_ij[adj == 1].view(-1, num_edges, self.n_actions, self.n_actions)
         # q_left_down = self.message.clone().unsqueeze(0).repeat(self.bs, 1, num_edges, 1)
@@ -154,13 +157,16 @@ class CASECMAC(object):
         z += x
         return z
 
-    def MaxSum_new(self, x, adj, q_ij, available_actions=None, k=3):
+    def MaxSum_new(self, x, adj, q_ij, atten_ij=None, available_actions=None, k=3):
         # (bs,n,|A|), (bs,n,n), (bs,n,n,|A|,|A|), (bs,n,|A|) -> (bs,n,|A|)
         # In this implementation, different samples may have different number of edges
         adj[:, self.eye2] = 0.
         num_edges = adj[0].sum(-1).sum(-1).unsqueeze(-1).unsqueeze(-1)
         x = x / self.n_agents
-        q_ij = q_ij / num_edges
+        if self.construction_attention:
+            q_ij /= (atten_ij * adj).sum(-1).sum(-1).unsqueeze(-1).unsqueeze(-1)
+        else:
+            q_ij = q_ij / num_edges
 
         # q_left_up = self.q_left_up.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1)
         q_left_down = self.q_left_down.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1, 1)
@@ -256,8 +262,8 @@ class CASECMAC(object):
                                                     available_actions=ep_batch['avail_actions'][:, t])
 
         # (bs,n,|A|) = (b,n,|A|), (b,n,n), (b,E,|A|,|A|)
-        # x_out = self.MaxSum_new(x.detach(), adj.detach(), q_ij.detach(), available_actions=ep_batch['avail_actions'][:, t])
-        x_out = self.MaxSum_faster(x.detach(), adj.detach(), q_ij.detach(), available_actions=ep_batch['avail_actions'][:, t])
+        # x_out = self.MaxSum_new(x.detach(), adj.detach(), q_ij.detach(), atten_ij.detach(), available_actions=ep_batch['avail_actions'][:, t])
+        x_out = self.MaxSum_faster(x.detach(), adj.detach(), q_ij.detach(), atten_ij.detach(), available_actions=ep_batch['avail_actions'][:, t])
         return x_out
 
     def caller_ip_q(self, ep_batch, t):
@@ -308,6 +314,7 @@ class CASECMAC(object):
                                                                                                                   1)  # (bs, n, n, atten_dim)
 
         atten_ij = (atten_i * atten_j).sum(-1).view(self.bs, -1)  # (bs, n*n)
+        atten_ij[:, self.eye2.view(-1)] = -999999
         atten_ij = self.atten_sofmax(atten_ij)
 
         return atten_ij.view(self.bs, self.n_agents, self.n_agents)
