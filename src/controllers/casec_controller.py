@@ -118,6 +118,7 @@ class CASECMAC(object):
 
         x = x / self.n_agents
         if self.construction_attention:
+            q_ij = q_ij * atten_ij.unsqueeze(-1).unsqueeze(-1)
             q_ij /= (atten_ij * adj).sum(-1).sum(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
         else:
             q_ij = q_ij / num_edges
@@ -164,6 +165,7 @@ class CASECMAC(object):
         num_edges = adj[0].sum(-1).sum(-1).unsqueeze(-1).unsqueeze(-1)
         x = x / self.n_agents
         if self.construction_attention:
+            q_ij = q_ij * atten_ij.unsqueeze(-1).unsqueeze(-1)
             q_ij /= (atten_ij * adj).sum(-1).sum(-1).unsqueeze(-1).unsqueeze(-1)
         else:
             q_ij = q_ij / num_edges
