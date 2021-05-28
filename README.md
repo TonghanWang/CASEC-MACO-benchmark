@@ -10,31 +10,31 @@ of the Multi-Agent COordination (MACO) benchmark and CASEC algorithm.
 Tasks in the MACO benchmark can be found in `src/envs`. To run experiments on the MACO benchmark:
 
 ```shell
-python src/main.py --config=casec --env-config=hallway with threshold=0.5 t_max=1050000 construction_delta_var=True delta_var_loss=True
+python src/main.py --config=casec --env-config=hallway with threshold=0.5 t_max=1050000 use_action_repr=False construction_delta_var=True delta_var_loss=True independent_p_q=True
 ```
 
 To run experiments on the SMAC benchmark:
 
 ```shell
-python src/main.py --config=casec --env-config=sc2 with env_args.map_name=MMM2 use_action_repr=True delta_var_loss=True delta_var_loss_weight=0.001 construction_delta_var=True threshold=0.1 t_max=2005000 independent_p_q=False
+python src/main.py --config=casec --env-config=sc2 with env_args.map_name=MMM2 use_action_repr=True delta_var_loss=True construction_delta_var=True threshold=0.3 t_max=2005000 independent_p_q=False
 ```
 
 There are four methods for building sparse graphs:
 * `construction_delta_abs`: Using the maximum utility difference (Eq. 5 in the paper)
 * `construction_q_var`: Using the variance of payoff functions (Eq. 6 in the paper)
 * `construction_delta_var`: Using the variance of utility difference functions (Eq. 7 in the paper)
-* `construction_attention`: Using the attentional observation-based approach (Eq. 12 in the paper)
+* `construction_attention`: Using the attentional observation-based approach (Eq. 9 in the paper)
 
-By default, they are set to `False`. Setting `True` for one of them would use the corresponding method to construct sparse graphs. Setting `full_graph` and `random_graph` to `True` can test complete and random coordination graphs, respectively.
+By default, they are set to `False`. Setting `True` for one of them would use the corresponding method to construct sparse graphs. Setting `full_graph` or `random_graph` to `True` can test complete or random coordination graphs, respectively.
 
-There are three losses for learning sparse topologies:
-* `l1_loss`: Using ![](http://latex.codecogs.com/svg.latex?\mathcal{L}_{\mathrm{sparse}}^{|\delta|}) (Eq. 8 in the paper)
-* `q_var_loss`: Using ![](http://latex.codecogs.com/svg.latex?\mathcal{L}_{\mathrm{sparse}}^{q_{\mathrm{var}}}) (Eq. 9 in the paper)
-* `delta_var_loss`: Using ![](http://latex.codecogs.com/svg.latex?\mathcal{L}_{\mathrm{sparse}}^{\delta_{\mathrm{var}}}) (Eq. 10 in the paper)
+There are three losses for learning sparse topologies (Eq. 8 in the paper):
+* `l1_loss`: Using ![](http://latex.codecogs.com/svg.latex?\mathcal{L}_{\mathrm{sparse}}^{|\delta|}) 
+* `q_var_loss`: Using ![](http://latex.codecogs.com/svg.latex?\mathcal{L}_{\mathrm{sparse}}^{q_{\mathrm{var}}})
+* `delta_var_loss`: Using ![](http://latex.codecogs.com/svg.latex?\mathcal{L}_{\mathrm{sparse}}^{\delta_{\mathrm{var}}})
 
 By default, they are set to `False`. Setting `True` for one of them would use the corresponding loss.
 
-CASEC uses `construction_delta_var` and `delta_var_loss`. Set `delta_var_loss_weight` to 1e-4 and 1e-3 for MACO and SMAC tasks, respectively.
+CASEC uses `construction_delta_var` and `delta_var_loss`. 
 The config files act as defaults for an algorithm or environment. 
 They are all located in `src/config`.
 `--config` refers to the config files in `src/config/algs`.
