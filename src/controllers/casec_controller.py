@@ -44,38 +44,8 @@ class CASECMAC(object):
         diag = th.diag(diag, 0)
         self.wo_diag = (wo_diag - diag).to(args.device).unsqueeze(0)
 
-        # self.pre_matrix = th.zeros(self.n_agents, self.n_agents, self.n_agents)
-        # for agent_i in range(self.n_agents):
-        #     self.pre_matrix[agent_i, agent_i, :] = 1
-        #     self.pre_matrix[agent_i, :, agent_i] = 1
-        # self.pre_matrix = self.pre_matrix.to(args.device)
-
         self.eye2 = th.eye(self.n_agents).bool()
         self.eye2 = self.eye2.to(args.device)
-
-        # self.eye3 = th.zeros(self.n_agents, self.n_agents, self.n_agents)
-        # for agent_i in range(self.n_agents):
-        #     self.eye3[agent_i, agent_i, agent_i] = 1
-        # self.eye3 = self.eye3.bool()
-        # self.eye3 = self.eye3.to(args.device)
-        #
-        # self.eye3_ik = th.zeros(self.n_agents, self.n_agents, self.n_agents)
-        # for agent_i in range(self.n_agents):
-        #     self.eye3_ik[agent_i, :, agent_i] = 1
-        # self.eye3_ik = self.eye3_ik.bool()
-        # self.eye3_ik = self.eye3_ik.to(args.device).unsqueeze(0)
-        #
-        # self.eye3_ij = th.zeros(self.n_agents, self.n_agents, self.n_agents)
-        # for agent_i in range(self.n_agents):
-        #     self.eye3_ij[agent_i, agent_i, :] = 1
-        # self.eye3_ij = self.eye3_ij.bool()
-        # self.eye3_ij = self.eye3_ij.to(args.device).unsqueeze(0)
-
-        # self.q_left_up = th.zeros(self.n_agents, self.n_agents, self.n_actions).to(args.device)
-        # self.q_left_down = th.zeros(self.n_agents, self.n_agents, self.n_agents, self.n_actions).to(args.device)
-        # self.r_up_left = th.zeros(self.n_agents, self.n_agents, self.n_actions).to(args.device)
-        # self.r_down_left = th.zeros(self.n_agents, self.n_agents, self.n_agents, self.n_actions).to(args.device)
-        # self.x_new = th.zeros(self.n_agents, self.n_agents, self.n_actions).to(args.device)
         self.edges_from = th.tensor([[i] * self.n_agents for i in range(self.n_agents)]).view(-1).unsqueeze(0).to(args.device)
         self.edges_to = th.tensor([[i for i in range(self.n_agents)] * self.n_agents]).view(-1).unsqueeze(0).to(args.device)
         self.message = th.zeros(2, 1, self.n_actions).to(args.device)
@@ -158,67 +128,6 @@ class CASECMAC(object):
         z += x
         return z
 
-    def MaxSum_new(self, x, adj, q_ij, atten_ij=None, available_actions=None, k=3):
-        # (bs,n,|A|), (bs,n,n), (bs,n,n,|A|,|A|), (bs,n,|A|) -> (bs,n,|A|)
-        # In this implementation, different samples may have different number of edges
-        adj[:, self.eye2] = 0.
-        num_edges = adj[0].sum(-1).sum(-1).unsqueeze(-1).unsqueeze(-1)
-        x = x / self.n_agents
-        if self.construction_attention:
-            q_ij = q_ij * atten_ij.unsqueeze(-1).unsqueeze(-1)
-            q_ij /= (atten_ij * adj).sum(-1).sum(-1).unsqueeze(-1).unsqueeze(-1)
-        else:
-            q_ij = q_ij / num_edges
-
-        # q_left_up = self.q_left_up.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1)
-        q_left_down = self.q_left_down.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1, 1)
-        # r_up_left = self.r_up_left.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1)
-        r_down_left = self.r_down_left.clone().unsqueeze(0).repeat(self.bs, 1, 1, 1, 1)
-        # (bs,n,n,|A|), (bs,n,n,n,|A|), (bs,n,n,|A|), (bs,n,n,n,|A|)
-
-        adj_new = adj.unsqueeze(dim=1).repeat(1, self.n_agents, 1, 1) * self.pre_matrix.unsqueeze(dim=0).repeat(self.bs,
-                                                                                                                1, 1, 1)
-        adj_new_e = adj_new.unsqueeze(-1).repeat(1, 1, 1, 1, self.n_actions)
-        q_ij_new = q_ij.unsqueeze(dim=1).repeat(1, self.n_agents, 1, 1, 1, 1) * self.pre_matrix.unsqueeze(
-            dim=0).unsqueeze(dim=-1).unsqueeze(dim=-1).repeat(self.bs, 1, 1, 1, 1, 1)
-
-        # Unavailable actions have a utility of -inf, which propagates throughout message passing
-        if available_actions is not None:
-            available_actions_i = available_actions.unsqueeze(dim=2).unsqueeze(dim=2).repeat(1, 1, self.n_agents,
-                                                                                             self.n_agents, 1)
-            available_actions_j = available_actions.unsqueeze(dim=2).unsqueeze(dim=1).repeat(1, self.n_agents, 1,
-                                                                                             self.n_agents, 1)
-            available_actions_k = available_actions.unsqueeze(dim=1).unsqueeze(dim=1).repeat(1, self.n_agents,
-                                                                                             self.n_agents, 1, 1)
-
-        for _ in range(k):
-            # Message from variable node i to function node g:
-            q_left_down_sum = (adj_new_e * r_down_left).sum(dim=-2).sum(dim=-2) + x
-            q_left_down = q_left_down_sum.unsqueeze(dim=-2).unsqueeze(dim=-2).repeat(1, 1, self.n_agents, self.n_agents,
-                                                                                     1) * adj_new_e - r_down_left
-            # Normalize
-            q_left_down = q_left_down - (q_left_down * available_actions_i).sum(dim=-1,
-                                                                                keepdim=True) / available_actions_i.sum(
-                dim=-1, keepdim=True)
-
-            # Message from function node g to variable node i:
-            eye3_ik = self.eye3_ik.repeat(self.bs, 1, 1, 1) * adj_new.bool()
-            eye3_ij = self.eye3_ij.repeat(self.bs, 1, 1, 1) * adj_new.bool()
-
-            sum_q_h_exclude_i = (q_left_down * adj_new_e).sum(1).unsqueeze(1).repeat(1, self.n_agents, 1, 1,
-                                                                                     1) - q_left_down
-            if available_actions is not None:
-                sum_q_h_exclude_i[eye3_ik] = sum_q_h_exclude_i[eye3_ik].masked_fill_(available_actions_j[eye3_ik] == 0,
-                                                                                     -float('inf'))
-                sum_q_h_exclude_i[eye3_ij] = sum_q_h_exclude_i[eye3_ij].masked_fill_(available_actions_k[eye3_ij] == 0,
-                                                                                     -float('inf'))
-            r_down_left[eye3_ik] = (q_ij_new[eye3_ik] + sum_q_h_exclude_i[eye3_ik].unsqueeze(-1)).max(dim=-2)[0]
-            r_down_left[eye3_ij] = (q_ij_new[eye3_ij] + sum_q_h_exclude_i[eye3_ij].unsqueeze(-2)).max(dim=-1)[0]
-
-        # Calculate the z value
-        z = (adj_new_e * r_down_left).sum(dim=-2).sum(dim=-2) + x
-        return z
-
     def select_actions(self, ep_batch, t_ep, t_env, bs=slice(None), test_mode=False):
         # Only select actions for the selected batch elements in bs
         avail_actions = ep_batch["avail_actions"][:, t_ep]
@@ -264,7 +173,6 @@ class CASECMAC(object):
                                                     available_actions=ep_batch['avail_actions'][:, t])
 
         # (bs,n,|A|) = (b,n,|A|), (b,n,n), (b,E,|A|,|A|)
-        # x_out = self.MaxSum_new(x.detach(), adj.detach(), q_ij.detach(), atten_ij.detach(), available_actions=ep_batch['avail_actions'][:, t])
         x_out = self.MaxSum_faster(x.detach(), adj.detach(), q_ij.detach(), atten_ij.detach(), available_actions=ep_batch['avail_actions'][:, t])
         return x_out
 
@@ -405,14 +313,12 @@ class CASECMAC(object):
                 indicator = None
                 raise NotImplementedError
 
-            # adj_tensor = self.wo_diag.repeat(self.bs, 1, 1).view(-1, self.n_agents * self.n_agents) * indicator
             adj_tensor = indicator.masked_fill(self.wo_diag.repeat(self.bs, 1, 1).view(-1, self.n_agents * self.n_agents) == 0, -99999999)
             adj_tensor_topk = \
                 th.topk(adj_tensor, int(self.n_agents * self.n_agents * self.args.threshold // 2 * 2), dim=-1)[1]
             adj = self.zeros.repeat(self.bs, 1, 1).view(-1, self.n_agents * self.n_agents)
             adj.scatter_(1, adj_tensor_topk, 1)
             adj = adj.view(-1, self.n_agents, self.n_agents).detach()
-            # Only for MaxSUm_new:
             adj[:, self.eye2] = 1.
 
         return x, adj, None, q_ij * self.p_lr
@@ -465,7 +371,6 @@ class CASECMAC(object):
             self.atten_query.load_state_dict(other_mac.atten_query.state_dict())
             self.atten_key.load_state_dict(other_mac.atten_key.state_dict())
         self.delta.load_state_dict(other_mac.delta.state_dict())
-        # self.gnn.load_state_dict(other_mac.gnn.state_dict())
         self.action_encoder.load_state_dict(other_mac.action_encoder.state_dict())
         self.action_repr = copy.deepcopy(other_mac.action_repr)
         self.p_action_repr = copy.deepcopy(other_mac.p_action_repr)
@@ -479,7 +384,6 @@ class CASECMAC(object):
         self.atten_sofmax.cuda()
         self.atten_query.cuda()
         self.atten_key.cuda()
-        # self.gnn.cuda()
         self.action_encoder.cuda()
 
     def save_models(self, path):
@@ -491,7 +395,6 @@ class CASECMAC(object):
             th.save(self.atten_query.state_dict(), "{}/atten_query.th".format(path))
             th.save(self.atten_key.state_dict(), "{}/atten_key.th".format(path))
         th.save(self.delta.state_dict(), "{}/delta.th".format(path))
-        # th.save(self.gnn.state_dict(), "{}/gnn.th".format(path))
         th.save(self.action_encoder.state_dict(), "{}/action_encoder.th".format(path))
         th.save(self.action_repr, "{}/action_repr.pt".format(path))
         th.save(self.p_action_repr, "{}/p_action_repr.pt".format(path))
@@ -509,7 +412,6 @@ class CASECMAC(object):
             self.atten_key.load_state_dict(
                 th.load("{}/atten_key.th".format(path), map_location=lambda storage, loc: storage))
         self.delta.load_state_dict(th.load("{}/delta.th".format(path), map_location=lambda storage, loc: storage))
-        # self.gnn.load_state_dict(th.load("{}/gnn.th".format(path), map_location=lambda storage, loc: storage))
         self.action_encoder.load_state_dict(th.load("{}/action_encoder.th".format(path),
                                                     map_location=lambda storage, loc: storage))
 
