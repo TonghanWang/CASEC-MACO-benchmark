@@ -18,10 +18,6 @@ target_update_interval: 200
 threshold: 0.3                # threshold for adjacency matrix
 individual_dim: 16            # Dim for the individual function
 delta_dim: 64                 # Dim for the delta function
-# gnn_input_dim: 1              # Input dim for gnn
-# gnn_hidden_dim: 32             # Hidden dim for gnn
-# gnn_output_dim: 1             # Output dim for gnn
-post_mlp_dim: 32              # Dim for post mlp
 
 # specify learner, controller and agent
 agent: "rnn"                  # A RNN agent that returns its hidden state instead of its value
