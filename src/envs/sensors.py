@@ -137,15 +137,15 @@ class SensorEnv(MultiAgentEnv):
         # print(map)
 
         for _prey_scaned in prey_scaned:
-            if _prey_scaned == 2:
+            if _prey_scaned >= 2:
                 reward += self.catch_reward
                 self._episode_scaned += 1
-            elif _prey_scaned == 3:
-                reward += self.catch_reward * 1.5
-                self._episode_scaned += 1
-            elif _prey_scaned == 4:
-                reward += self.catch_reward * 2
-                self._episode_scaned += 1
+            # elif _prey_scaned == 3:
+            #     reward += self.catch_reward * 1.5
+            #     self._episode_scaned += 1
+            # elif _prey_scaned == 4:
+            #     reward += self.catch_reward * 2
+            #     self._episode_scaned += 1
 
         info['scaned'] = self._episode_scaned
 
