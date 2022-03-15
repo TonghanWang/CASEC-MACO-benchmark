@@ -45,7 +45,7 @@ class QMixer(nn.Module):
         states = states.reshape(-1, self.state_dim)
         agent_qs = agent_qs.view(-1, 1, self.n_agents) #(b*t, 1, n)
         # First layer
-        w1 = th.abs(self.hyper_w_1(states)) #qmix的系数是正的, (b, embed_dim*n)
+        w1 = th.abs(self.hyper_w_1(states)) # the parameter of qmix is positive, (b, embed_dim*n)
         b1 = self.hyper_b_1(states) #(b, embed_dim)
         w1 = w1.view(-1, self.n_agents, self.embed_dim) #(*, n, embed_dim)
         b1 = b1.view(-1, 1, self.embed_dim) #(*, 1, embed_dim)
