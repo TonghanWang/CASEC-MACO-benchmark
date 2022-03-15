@@ -39,8 +39,8 @@ class QLearner:
         rewards = batch["reward"][:, :-1] # (bs,t,1)
         actions = batch["actions"][:, :-1] # (bs,t,n,n_actions)
         terminated = batch["terminated"][:, :-1].float() # (bs,t,1)
-        mask = batch["filled"][:, :-1].float() # 不够的episode会填上 (bs,t,1)
-        mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1]) # true的情况是：填上的且episode没有终止
+        mask = batch["filled"][:, :-1].float() # (bs,t,1)
+        mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1]) # true: the episode is not terminated.
         avail_actions = batch["avail_actions"]
 
         # Calculate estimated Q-Values
@@ -50,10 +50,10 @@ class QLearner:
             agent_outs = self.mac.forward(batch, t=t) # (bs,n,n_actions)
             mac_out.append(agent_outs) #[t,(bs,n,n_actions)]
         mac_out = th.stack(mac_out, dim=1)  # Concat over time  # (bs,t,n,n_actions)
-        # stack维度会增加一维，cat维度不变
+        # stack: new axis, cat: the same axis
 
         # Pick the Q-Values for the actions taken by each agent
-        # 维度是bta，gather和scatter是逆过程，x和index的维度必须一样
+        # (bs,t,|A|), gather, scatter. x and index have the same dimensions.
         chosen_action_qvals = th.gather(mac_out[:, :-1], dim=3, index=actions).squeeze(3)  # Remove the last dim
         # (bs,t,n) Q value of an action
 
@@ -86,16 +86,15 @@ class QLearner:
 
         # Mix
         if self.mixer is not None:
-            chosen_action_qvals = self.mixer(chosen_action_qvals, batch["state"][:, :-1]) #这一步的q-value
-            target_max_qvals = self.target_mixer(target_max_qvals, batch["state"][:, 1:]) #下一步的q-value
+            chosen_action_qvals = self.mixer(chosen_action_qvals, batch["state"][:, :-1]) # q-value of this step
+            target_max_qvals = self.target_mixer(target_max_qvals, batch["state"][:, 1:]) # q-value of next step
             # (bs,t,1)
 
         # Calculate 1-step Q-Learning targets
         targets = rewards + self.args.gamma * (1 - terminated) * target_max_qvals
 
-        # Td-error
-        # 注意：这里算Td-error是targets.detach()
-        td_error = (chosen_action_qvals - targets.detach()) #评估网络detach，执行网络更新
+        # Td-error: targets.detach()
+        td_error = (chosen_action_qvals - targets.detach()) # detach: evaluation network; update: action network
         # (bs,t,1)
 
         mask = mask.expand_as(td_error)

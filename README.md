@@ -10,16 +10,16 @@ of the Multi-Agent COordination (MACO) benchmark and CASEC algorithm.
 Tasks in the MACO benchmark can be found in `src/envs`. To run experiments on the MACO benchmark:
 
 ```shell
-python src/main.py --config=casec --env-config=hallway with threshold=0.5 t_max=1050000 use_action_repr=False construction_delta_var=True delta_var_loss=True independent_p_q=True
+python src/main.py --config=casec --env-config=hallway with threshold=0.5 t_max=1050000 use_action_repr=False construction_q_var=True q_var_loss=True independent_p_q=True
 ```
 
 To run experiments on the SMAC benchmark:
 
 ```shell
-python src/main.py --config=casec --env-config=sc2 with env_args.map_name=MMM2 use_action_repr=True delta_var_loss=True construction_delta_var=True threshold=0.3 t_max=2005000 independent_p_q=False
+python src/main.py --config=casec --env-config=sc2 with env_args.map_name=5m_vs_6m use_action_repr=True q_var_loss=True construction_q_var=True threshold=0.3 t_max=2005000 independent_p_q=False
 ```
 
-There are four methods for building sparse graphs:
+<!-- There are four methods for building sparse graphs:
 * `construction_delta_abs`: Using the maximum utility difference (Eq. 5 in the paper)
 * `construction_q_var`: Using the variance of payoff functions (Eq. 6 in the paper)
 * `construction_delta_var`: Using the variance of utility difference functions (Eq. 7 in the paper)
@@ -32,9 +32,17 @@ There are three losses for learning sparse topologies (Eq. 8 in the paper):
 * `q_var_loss`: Using ![](http://latex.codecogs.com/svg.latex?\mathcal{L}_{\mathrm{sparse}}^{q_{\mathrm{var}}})
 * `delta_var_loss`: Using ![](http://latex.codecogs.com/svg.latex?\mathcal{L}_{\mathrm{sparse}}^{\delta_{\mathrm{var}}})
 
-By default, they are set to `False`. Setting `True` for one of them would use the corresponding loss.
+By default, they are set to `False`. Setting `True` for one of them would use the corresponding loss. -->
 
-CASEC uses `construction_delta_var` and `delta_var_loss`. 
+By default, CASEC uses `construction_q_var` (Eq. 4 in the paper) and `q_var_loss` (Eq. 8 in the paper). 
+We also provide other methods for building sparse graphs and losses for learning sparse topologies. You can refer to Appendix B.2 for more details.
+* `construction_delta_abs`: Eq. 30 in the paper
+* `construction_delta_var`: Eq. 32 in the paper
+* `construction_attention`: Eq. 35 in the paper
+* `l1_loss`: Eq. 33 in the paper
+* `delta_var_loss`: Eq. 34 in the paper
+
+Setting `True` for one of them would use the corresponding method and loss, respectively.
 The config files act as defaults for an algorithm or environment. 
 They are all located in `src/config`.
 `--config` refers to the config files in `src/config/algs`.
