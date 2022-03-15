@@ -36,11 +36,11 @@ By default, they are set to `False`. Setting `True` for one of them would use th
 
 By default, CASEC uses `construction_q_var` (Eq. 4 in the paper) and `q_var_loss` (Eq. 8 in the paper). 
 We also provide other methods for building sparse graphs and losses for learning sparse topologies. You can refer to Appendix B.2 for more details.
-* `construction_delta_abs`: Eq. 30 in the paper
-* `construction_delta_var`: Eq. 32 in the paper
-* `construction_attention`: Eq. 35 in the paper
-* `l1_loss`: Eq. 33 in the paper
-* `delta_var_loss`: Eq. 34 in the paper
+* `construction_delta_abs`: Eq. 30 in the [paper](https://arxiv.org/abs/2106.02886)
+* `construction_delta_var`: Eq. 32 in the [paper](https://arxiv.org/abs/2106.02886)
+* `construction_attention`: Eq. 35 in the [paper](https://arxiv.org/abs/2106.02886)
+* `l1_loss`: Eq. 33 in the [paper](https://arxiv.org/abs/2106.02886)
+* `delta_var_loss`: Eq. 34 in the [paper](https://arxiv.org/abs/2106.02886)
 
 Setting `True` for one of them would use the corresponding method and loss, respectively.
 The config files act as defaults for an algorithm or environment. 
